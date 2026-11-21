@@ -87,9 +87,15 @@
           <div id="materials" class="materials" aria-label="ダイスの材質"></div>
           <p id="material-rule" class="material-rule"></p>
         </div>
+        <section class="vip-group" aria-labelledby="merge-title">
+          <h3 id="merge-title" tabindex="-1">ダイス合成</h3>
+          <p class="material-rule">材質・特殊タイプ・星が同じダイス2個を、次の星のダイス1個にします。上限は★4です。</p>
+          <p id="merge-empty" class="material-rule">合成できる組み合わせはありません。</p>
+          <div id="merge-options" class="upgrades"></div>
+        </section>
         <section class="vip-group" aria-labelledby="special-title">
           <h3 id="special-title">特殊ダイス</h3>
-          <p class="material-rule">通常ダイスを変換します。各種類につき1個まで。VIP転生で変換はリセットされます。</p>
+          <p class="material-rule">★1の通常ダイスを変換します。各種類4個まで。VIP転生で変換はリセットされます。</p>
           <div id="special-dice" class="upgrades"></div>
         </section>
       </section>
@@ -131,11 +137,19 @@
       <div><button value="cancel" autofocus>キャンセル</button><button value="reset" class="danger">リセットする</button></div>
     </form>
   </dialog>
+  <dialog id="merge-dialog" aria-labelledby="merge-confirm-title">
+    <form method="dialog">
+      <h2 id="merge-confirm-title">ダイスを合成</h2>
+      <p id="merge-confirm-preview"></p>
+      <p id="merge-confirm-result"></p>
+      <div><button value="cancel" autofocus>キャンセル</button><button value="merge" class="vip-confirm">合成する</button></div>
+    </form>
+  </dialog>
   <dialog id="vip-dialog" aria-labelledby="vip-title">
     <form method="dialog">
       <h2 id="vip-title">VIPテーブル転生</h2>
       <p id="vip-confirm-text"></p>
-      <p>所持コイン、ダイス数、個別の材質と特殊ダイス、アーム、衝撃波、フィーバーをリセットします。新しいダイスの初期材質は「材質の下地」のレベルで決まります。未解放なら木製です。</p>
+      <p>所持コイン、ダイス数、個別の材質、特殊タイプ、星、アーム、衝撃波、フィーバーをリセットします。新しいダイスの初期材質は「材質の下地」のレベルで決まります。未解放なら木製です。</p>
       <p>VIPチップ、恒久タレント、スキンと累計記録を引き継ぎます。</p>
       <div><button value="cancel" autofocus>キャンセル</button><button value="rebirth" class="vip-confirm">転生する</button></div>
     </form>
