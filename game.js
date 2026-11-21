@@ -12,7 +12,8 @@ const materials = [
   {name:"ネオンレーザー", multiplier:28, high:"#2c816e", low:"#133e42", side:"#172a3c", edge:"#74ffe2", pip:"#a9ffee"},
 ];
 const caps = {dice:40, material:3, arms:6, speed:7, wave:8};
-const VIP_TARGET = 50000;
+const VIP_TARGET = 40000;
+const MATERIAL_PRICES = [85,650,4200];
 const skins = [
   {id:"classic",name:"クラシックグリーン",unlock:0,felt:["#367054","#265b44","#133f33"],inlay:"#d9c48a",
     rail:["#9d6848","#72462f","#9d6441","#78432e","#563220"],lip:["#5d3727","#613827","#47271e","#2b1915"]},
@@ -34,6 +35,12 @@ const talents = [
     detail:n=>"共鳴時のゲージ獲得 ＋"+20*n+"%"},
   {id:"chain",branch:"アーム連鎖",icon:"arm",title:"近接ダイス連鎖",costs:[1,2,3],
     detail:n=>n+" 段まで連鎖し、1作動につき最大 "+2*n+" 個を追加で投擲"},
+  {id:"armWave",branch:"アーム連鎖",icon:"wave",title:"アーム衝撃波",costs:[8],requires:"chain",
+    detail:()=>"アームの主投擲で衝撃波を1回発生。衝撃波Lv.で範囲が広がる"},
+  {id:"materialPermit",branch:"材質",icon:"gem",title:"材質ライセンス",costs:[1],
+    detail:()=>"次の材質を転生1回分早く解放。全ダイスの材質条件も必要"},
+  {id:"materialStart",branch:"材質",icon:"die",title:"材質の下地",costs:[2,4],
+    detail:n=>"次の転生後の初期ダイス・購入ダイスを "+materials[n].name+"以上にする"},
 ];
 const upgrades = [
   {key:"dice", icon:"die", title:"ダイス購入", action:"購入",
@@ -41,7 +48,7 @@ const upgrades = [
     detail:s=>s.dice+" / 40 個 · 同時に振れるダイスを増やす"},
   {key:"material", icon:"gem", title:"ダイスの材質", action:"1個進化"},
   {key:"arms", icon:"arm", title:"ロボットアーム", action:"雇用", cost:s=>95*2.48**s.arms,
-    detail:s=>s.arms+" / 6 基 · "+(s.talents.chain ? "1個を投擲し、近くへ連鎖" : "1作動につきダイス1個")},
+    detail:s=>s.arms+" / 6 基 · "+(s.talents.armWave ? "主投擲で衝撃波" : s.talents.chain ? "1個を投擲し、近くへ連鎖" : "1作動につきダイス1個")},
   {key:"speed", icon:"speed", title:"アーム速度", action:"強化", cost:s=>125*1.72**s.speed,
     detail:s=>s.arms ? "Lv. "+s.speed+" · "+armInterval().toFixed(1)+" 秒ごとに作動" : "ロボットアームを雇うと解放"},
   {key:"wave", icon:"wave", title:"テーブル衝撃波", action:s=>s.wave ? "強化" : "解放",
@@ -66,6 +73,7 @@ const icon = name => '<svg aria-hidden="true"><use href="#i-'+name+'"/></svg>';
 function interval(level) {return Math.max(1.1,4.5*.81**level);}
 function chainRange(rank,speed) {return .13+.025*rank+.01*speed;}
 function waveRange(level) {return .10+.025*(level-1);}
+function armWaveRange(level) {return .17+.015*Math.max(0,level-1);}
 function feverMultiplier() {return state.feverLeft>0 ? 2 : 1;}
 function armInterval() {return interval(state.speed)/feverMultiplier();}
 function rollValue(face,rank = 0) {return Math.round(face*materials[rank].multiplier*(1+.2*state.talents.income));}
@@ -165,8 +173,10 @@ function idleReward(from, to) {
   const seconds = Math.min(14400,(to-from)/1000);
   if (seconds < 12 || !state.arms) return 0;
   const chain = state.talents.chain;
-  const splash = chain ? Math.min(chain*2,(state.dice-1)*chainRange(chain,state.speed)) : 0;
-  const estimatedRolls = Math.min(state.dice*1.25,state.arms*(1+splash)/interval(state.speed));
+  const neighbors = state.dice-1;
+  const chainExtras = chain ? Math.min(chain*2,neighbors*chainRange(chain,state.speed)) : 0;
+  const waveExtras = state.talents.armWave ? (neighbors-chainExtras)*armWaveRange(state.wave)*.45 : 0;
+  const estimatedRolls = Math.min(state.dice*1.25,state.arms*(1+chainExtras+waveExtras)/interval(state.speed));
   const total = state.dieMaterials.reduce((sum,rank)=>{
     for (let face=1;face<=6;face++) sum += rollValue(face,rank);
     return sum;
@@ -296,7 +306,7 @@ function renderVIP() {
     view.detail.textContent = "Lv. "+rank+" / "+talent.costs.length+" · "+(prerequisite || (rank ? "" : "解放で ")+effect);
     view.button.disabled = maxed || !!locked || state.vipChips<cost;
     view.label.textContent = maxed ? "最大" : locked ? "未解放" : rank ? "強化" : "解放";
-    view.price.hidden = maxed || !!locked;
+    view.price.hidden = maxed;
     view.price.lastElementChild.textContent = cost ?? "";
     view.button.title = maxed || locked ? "" : talent.detail(rank+1);
     view.button.setAttribute("aria-label",talent.title+" "+view.label.textContent+(view.price.hidden ? "" : " "+cost+" VIPチップ"));
@@ -322,7 +332,7 @@ vipDialog.addEventListener("close",()=>{
   if (newSkin>=0) remaining.skin = newSkin;
   remaining.coins = remaining.talents.bankroll*20;
   remaining.dice = 1+remaining.talents.dice;
-  remaining.materialBase = Math.min(...old.dieMaterials);
+  remaining.materialBase = Math.max(Math.min(...old.dieMaterials),remaining.talents.materialStart);
   remaining.dieMaterials = Array(remaining.dice).fill(remaining.materialBase);
   state = remaining;
   resetTable();
@@ -374,8 +384,16 @@ function renderGoal() {
 function materialOffer() {
   const from = Math.min(...state.dieMaterials);
   const to = from+1;
+  const advanced = state.dieMaterials.filter(rank=>rank>=to).length;
+  const requiredRebirths = materialRebirths(to);
+  const rosterFactor = 1+.035*Math.max(0,state.dice-6);
+  const progressFactor = (1+.08*advanced)*1.095**Math.max(0,advanced-4);
   return {from,to,index:state.dieMaterials.indexOf(from),capped:from===caps.material,
-    locked:state.prestiges<from,price:[85,650,4200][from]};
+    advanced,requiredRebirths,locked:state.prestiges<requiredRebirths,
+    price:Math.ceil((MATERIAL_PRICES[from] ?? Infinity)*rosterFactor*progressFactor)};
+}
+function materialRebirths(tier) {
+  return Math.max(0,tier-1-state.talents.materialPermit);
 }
 function upgradeOffer(item) {
   if (item.key==="material") return materialOffer();
@@ -397,9 +415,10 @@ function renderMaterials() {
     return;
   }
   const nextTier = offer.locked ? offer.to : offer.to+1;
+  const rebirths = materialRebirths(nextTier);
   rule.textContent = nextTier<=caps.material ?
-    materials[nextTier].name+"の解放条件は、全ダイスを"+materials[nextTier-1].name+
-      "以上にしてVIP転生を"+(nextTier-1)+"回行うことです。" :
+    materials[nextTier].name+"の解放条件は、全ダイスが"+materials[nextTier-1].name+"以上"+
+      (rebirths ? "、VIP転生が通算"+rebirths+"回以上です。" : "であることです。") :
     "1回の購入でダイス1個がネオンレーザーになります。";
 }
 function renderUI() {
@@ -417,8 +436,9 @@ function renderUI() {
     const offer = upgradeOffer(item);
     const {capped,locked,price} = offer;
     view.detail.textContent = item.key!=="material" ? item.detail(state) : capped ? "全ダイスが最高材質" :
-      locked ? "VIP転生 "+offer.from+" 回で"+materials[offer.to].name+"を解放" :
-      "ダイス #"+(offer.index+1)+" を"+materials[offer.to].name+" ×"+materials[offer.to].multiplier+"へ";
+      locked ? "VIP転生 "+offer.requiredRebirths+" 回で"+materials[offer.to].name+"を解放" :
+      "ダイス #"+(offer.index+1)+" を"+materials[offer.to].name+" ×"+materials[offer.to].multiplier+
+      "へ · "+offer.advanced+"/"+state.dice+"個済み";
     view.button.disabled = capped || locked || state.coins < price;
     const action = typeof item.action === "function" ? item.action(state) : item.action;
     view.label.textContent = capped ? "最大" : locked ? "未解放" : action;
@@ -633,9 +653,15 @@ function spawnDie() {
   let x = board.x+board.w*(start ? start[0] : random(.13,.87));
   let y = board.y+board.h*(start ? start[1] : random(.13,.87));
   if (!start) {
-    for (let tries=0; tries<16 && dice.some(other=>Math.hypot(other.x-x,other.y-y)<31*unit); tries++) {
-      x = board.x+board.w*random(.1,.9);
-      y = board.y+board.h*random(.1,.9);
+    let clearance = -Infinity;
+    for (let sample=0;sample<14;sample++) {
+      const px = board.x+board.w*random(.11,.89), py = board.y+board.h*random(.11,.89);
+      let nearest = Infinity;
+      for (const die of dice) nearest = Math.min(nearest,(die.x-px)**2+(die.y-py)**2);
+      if (nearest<=clearance) continue;
+      x = px;
+      y = py;
+      clearance = nearest;
     }
   }
   const die = {slot,x,y,z:0,vx:0,vy:0,vz:0,rx,ry,rz:start ? [-.34,.25,-.15][dice.length] : random(-Math.PI,Math.PI),
@@ -659,9 +685,11 @@ function confine(die,rebound = true) {
   const rx = Math.min(unit*17,board.w*.5), ry = Math.min(unit*17,board.h*.5);
   const x = clamp(die.x,board.x+rx,board.x+board.w-rx);
   const y = clamp(die.y,board.y+ry,board.y+board.h-ry);
-  if (rebound && x !== die.x) die.vx *= -.66;
-  if (rebound && y !== die.y) die.vy *= -.66;
-  if (rebound && (x !== die.x || y !== die.y) && Math.hypot(die.vx,die.vy)>30*unit) sound("hit");
+  const hitX = rebound && (die.x-x)*die.vx>0;
+  const hitY = rebound && (die.y-y)*die.vy>0;
+  if (hitX) die.vx *= -.66;
+  if (hitY) die.vy *= -.66;
+  if ((hitX || hitY) && Math.hypot(die.vx,die.vy)>30*unit) sound("hit");
   die.x = x;
   die.y = y;
 }
@@ -684,13 +712,14 @@ function launch(die, x, y, strength, manual) {
   if (manual) sound("hit");
   return true;
 }
-function addWave(x,y,source) {
-  const batch = Symbol();
-  source.manualBatch = batch;
-  waves.push({x,y,range:waveRange(state.wave),t:0,life:.34,
-    strength:1+.062*state.wave,batch,hit:new Set([source])});
+function addWave(source,automated = false) {
+  const batch = automated ? null : Symbol();
+  if (!automated) source.manualBatch = batch;
+  const range = automated ? armWaveRange(state.wave) : waveRange(state.wave);
+  const strength = automated ? .82+.033*state.wave : 1+.062*state.wave;
+  waves.push({x:source.x,y:source.y,range,t:0,life:.34,strength,batch,automated,hit:new Set([source])});
   if (waves.length > 24) waves.shift();
-  sound("wave");
+  if (!automated) sound("wave");
 }
 function waveRadius(wave) {
   const t = clamp(wave.t/wave.life,0,1);
@@ -840,10 +869,18 @@ function tickArm(arm,dt) {
         nearest = distance;
       }
     }
-    if (!launch(target,sweep.x-unit,sweep.y,1,false)) return;
+    const angle = random(0,Math.PI*2);
+    const inwardX = .86*(1-2*(target.x-board.x)/board.w);
+    const inwardY = .86*(1-2*(target.y-board.y)/board.h);
+    const originX = target.x-(Math.cos(angle)+inwardX)*unit;
+    const originY = target.y-(Math.sin(angle)+inwardY)*unit;
+    if (!launch(target,originX,originY,1,false)) return;
+    sweep.x = target.x;
+    sweep.y = target.y;
     spark(target.x,target.y,["#8cfacf","#d5ffcd"],7);
     sound("hit");
     if (state.talents.chain) cascadeArm(target);
+    if (state.talents.armWave) addWave(target,true);
   }
 }
 function cascadeArm(source) {
@@ -880,7 +917,7 @@ function step(dt) {
     for (const die of dice) {
       if (!wave.hit.has(die) && Math.hypot(die.x-wave.x,die.y-wave.y)<=radius) {
         wave.hit.add(die);
-        if (launch(die,wave.x,wave.y,wave.strength,true)) {
+        if (launch(die,wave.x,wave.y,wave.strength,!wave.automated)) {
           die.manualBatch = wave.batch;
         }
       }
@@ -1179,10 +1216,11 @@ function drawWave(wave) {
   const radius = waveRadius(wave);
   if (radius<=0) return;
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius,0,Math.PI*2);
-  ctx.strokeStyle="rgba(255,213,137,"+(1-t)*.66+")";
+  const color = wave.automated ? "145,247,213" : "255,213,137";
+  ctx.strokeStyle="rgba("+color+","+(1-t)*.66+")";
   ctx.lineWidth=Math.min(radius*.18,(3.5-2*t)*unit);ctx.stroke();
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius*.8,0,Math.PI*2);
-  ctx.strokeStyle="rgba(255,213,137,"+(1-t)*.25+")";
+  ctx.strokeStyle="rgba("+color+","+(1-t)*.25+")";
   ctx.lineWidth=Math.min(radius*.08,unit);ctx.stroke();
 }
 function drawBeam(beam) {
@@ -1372,7 +1410,7 @@ function hitDie(from,to) {
 }
 function manualRoll(die,x,y) {
   const strength = 1+.062*state.wave;
-  if (launch(die,x,y,strength,true) && state.wave) addWave(die.x,die.y,die);
+  if (launch(die,x,y,strength,true) && state.wave) addWave(die);
 }
 function keyboardRoll() {
   const x = board.x+board.w/2, y = board.y+board.h/2;
