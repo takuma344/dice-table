@@ -64,7 +64,6 @@ const MILESTONE_GROUPS = [
   {id:"highestStar",name:"到達した星",unit:"★",targets:[2,3,4],reward:"resonance",rate:1},
   {id:"prestiges",name:"VIP転生",unit:"回",targets:[1,3,8],reward:"income",rate:1},
   {id:"collection",name:"図鑑収集",unit:"種",targets:[5,10,15],reward:"income",rate:1},
-  {id:"greedBest",name:"強欲ポットの最高連投",unit:"回",targets:[1,3,5],reward:"income",rate:1},
 ];
 const MILESTONE_IDS = new Set(MILESTONE_GROUPS.flatMap(group=>group.targets.map((_,index)=>group.id+"-"+index)));
 const MILESTONE_REWARDS = {income:"獲得コイン",resonance:"共鳴ボーナス",fever:"フィーバー充填"};
@@ -110,8 +109,6 @@ const SHAKE_DURATION = .24;
 const SLAM_COOLDOWN = 2.5;
 const SLAM_RANGE = .30;
 const HOLD_DURATION = 14;
-const GREED_MULTIPLIERS = [1,1.6,2.6,4.2,6.8,11];
-const GREED_DANGERS = [1,2,2,3,3];
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const coarsePointer = matchMedia("(pointer:coarse)");
 const number = new Intl.NumberFormat("ja-JP");
@@ -160,7 +157,6 @@ function fresh() {
     best:0,earned:0,seconds:0,muted:false,feverCharge:0,feverLeft:0,runEarned:0,
     vipChips:0,prestiges:0,skin:0,feverBurstRolls:0,masteryNeon:0,masterySpecial:0,masteryBurst:0,masteryRewards:0,
     collection:[],achievements:[],highestStar:1,merges:0,feverStarts:0,feverCoins:0,bestFeverCoins:0,bestFeverBursts:0,
-    greedPot:0,greedFloor:0,greedDepth:0,greedAttempt:null,greedUsed:false,greedBest:0,greedBestCollect:0,greedRescues:0,greedBusts:0,
     talents:Object.fromEntries(talents.map(talent=>[talent.id,0])),
     savedAt:Date.now()};
 }
@@ -171,9 +167,8 @@ function load() {
     const raw = JSON.parse(localStorage.getItem(SAVE));
     if (!raw || typeof raw !== "object") return initial;
     for (const key of Object.keys(initial)) {
-      if (key === "talents" || key==="greedAttempt" || Array.isArray(initial[key])) continue;
+      if (key === "talents" || Array.isArray(initial[key])) continue;
       if (key === "muted") initial[key] = raw[key] === true;
-      else if (key==="greedUsed") initial[key] = raw[key]===true;
       else if (key === "feverLeft" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,FEVER_DURATION);
       else if (key === "feverCharge" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,99.99);
       else if (Number.isFinite(raw[key])) {
@@ -212,22 +207,6 @@ function load() {
       return type;
     });
     initial.masteryRewards = Math.min(ALL_MASTERY,initial.masteryRewards);
-    initial.greedDepth = Math.min(GREED_DANGERS.length,initial.greedDepth);
-    initial.greedFloor = Math.min(initial.greedPot,initial.greedFloor);
-    const attempt = raw.greedAttempt;
-    if (initial.greedPot>0 && initial.greedDepth<GREED_DANGERS.length && attempt &&
-        Number.isInteger(attempt.face) && attempt.face>=1 && attempt.face<=6) {
-      initial.greedAttempt = {
-        slot:clamp(Number.isInteger(attempt.slot) ? attempt.slot : 0,0,initial.dice-1),
-        face:attempt.face, shield:Number.isInteger(attempt.shield) && attempt.shield<=6 ? Math.max(0,attempt.shield) : 0,
-        rescued:attempt.rescued==="hold" || attempt.rescued==="slam" ? attempt.rescued : "",
-      };
-      if (initial.greedAttempt.rescued) initial.greedUsed = true;
-    }
-    if (!initial.greedPot) {
-      initial.greedDepth = 0;
-      initial.greedUsed = false;
-    }
     if (!initial.feverLeft) initial.feverBurstRolls = 0;
     if (!skins[initial.skin] || !skinAvailable(skins[initial.skin],initial)) initial.skin = 0;
   } catch {
@@ -249,8 +228,6 @@ let burstUntil = 0, burstPayout = 0;
 let held = null, holdMode = false, slamReady = 0, impactTime = -Infinity, hitStop = 0;
 let throwStatus = "", throwStatusUntil = 0;
 let pointer = null;
-let greedRound = null;
-let lastGreedDie = null;
 let uiDirty = true;
 let noticeTimer;
 let achievementTimer, cachedAchievements, cachedAchievementCount, cachedBonus;
@@ -276,124 +253,6 @@ function credit(amount) {
   state.earned = Math.min(Number.MAX_SAFE_INTEGER,state.earned+amount);
   state.runEarned = Math.min(Number.MAX_SAFE_INTEGER,state.runEarned+amount);
   uiDirty = true;
-}
-function greedDanger() {return GREED_DANGERS[state.greedDepth] ?? 0;}
-function greedGuarantee() {
-  return state.greedPot ? Math.max(1,state.greedFloor,Math.floor(state.greedPot*.25)) : 0;
-}
-function greedTarget(die) {return greedRound?.die===die;}
-function greedChoice() {
-  const ready = die=>!die.rolling && !isHeld(die) && !isFusing(die);
-  if (lastGreedDie && dice.includes(lastGreedDie) && ready(lastGreedDie)) return lastGreedDie;
-  return dice.findLast(ready);
-}
-function resetGreedPot() {
-  state.greedPot = 0;
-  state.greedFloor = 0;
-  state.greedDepth = 0;
-  state.greedAttempt = null;
-  state.greedUsed = false;
-  greedRound = null;
-}
-function collectGreed() {
-  if (state.greedAttempt || !state.greedPot) return;
-  unlockAudio();
-  const payout = state.greedPot;
-  state.greedBestCollect = Math.max(state.greedBestCollect,payout);
-  credit(payout);
-  resetGreedPot();
-  sound("buy");
-  announce("利確  ＋"+format(payout)+" コイン");
-  save();
-  renderUI();
-}
-function launchGreed(die,attempt) {
-  launch(die,die.x-12*unit,die.y+10*unit,.98,true,{reroll:true,greed:true});
-  die.nextFace = attempt.face;
-  greedRound = {die,warnUntil:0};
-}
-function pushGreed() {
-  if (!state.greedPot || state.greedAttempt || !greedDanger()) return;
-  const die = greedChoice();
-  if (!die) return;
-  unlockAudio();
-  const shield = !state.greedUsed && held?.die.face>greedDanger() ? held.die.face : 0;
-  if (shield) held = null;
-  state.greedAttempt = {slot:die.slot,face:1+Math.floor(Math.random()*6),shield,rescued:""};
-  launchGreed(die,state.greedAttempt);
-  uiDirty = true;
-  save();
-  renderGreed();
-}
-function rescueGreed(method) {
-  if (!greedRound || state.greedUsed) return false;
-  const {die} = greedRound;
-  const attempt = state.greedAttempt;
-  if (method==="slam" && time>=greedRound.warnUntil) return false;
-  state.greedUsed = true;
-  attempt.rescued = method;
-  attempt.face = method==="hold" ? attempt.shield : greedDanger()+1+Math.floor(Math.random()*(6-greedDanger()));
-  if (method==="slam") {
-    launchGreed(die,attempt);
-    slamReady = time+SLAM_COOLDOWN;
-  } else {
-    die.nextFace = attempt.face;
-  }
-  spark(die.x,die.y,["#aaffeb","#fff0ad"],28);
-  sound("grand");
-  announce("起死回生！ "+(method==="hold" ? "ホールドの安全目" : "救済スラム")+"で危険を回避");
-  save();
-  renderGreed();
-  return true;
-}
-function greedLanding(die) {
-  if (!greedTarget(die) || greedRound.warnUntil || die.bounces<2 || die.vz>=0 ||
-      die.z>14*unit || die.nextFace>greedDanger()) return;
-  if (!state.greedUsed && state.greedAttempt.shield>greedDanger() && rescueGreed("hold")) return;
-  greedRound.warnUntil = time+(state.greedUsed ? .5 : 1.2);
-  die.z = Math.max(3*unit,die.z);
-  die.vz = -35*unit;
-  sound("hazard");
-  renderGreed();
-}
-function applyGreedPayout(die,amount,base) {
-  if (greedTarget(die)) {
-    const stake = state.greedPot;
-    if (die.face<=greedDanger()) {
-      const payout = greedGuarantee();
-      state.greedBusts++;
-      resetGreedPot();
-      credit(payout);
-      announce("バースト · 最低保証 ＋"+format(payout));
-      sound("hazard");
-      save();
-      return "bust";
-    }
-    const {rescued} = state.greedAttempt;
-    const ratio = GREED_MULTIPLIERS[state.greedDepth+1]/GREED_MULTIPLIERS[state.greedDepth];
-    const recoveryBonus = rescued ? Math.max(1,Math.round(stake*.20)) : 0;
-    state.greedPot = Math.min(Number.MAX_SAFE_INTEGER,Math.round(stake*ratio)+amount+recoveryBonus);
-    state.greedDepth++;
-    state.greedBest = Math.max(state.greedBest,state.greedDepth);
-    if (rescued) state.greedRescues++;
-    lastGreedDie = die;
-    state.greedAttempt = null;
-    greedRound = null;
-    uiDirty = true;
-    announce((rescued ? "起死回生 · ボーナス ＋"+format(recoveryBonus)+" · " : "")+
-      "ポット "+format(state.greedPot));
-    save();
-    return "pot";
-  }
-  if (die.potEligible && !state.greedAttempt) {
-    lastGreedDie = die;
-    if (!state.greedPot) state.greedFloor = Math.min(amount,base);
-    state.greedPot = Math.min(Number.MAX_SAFE_INTEGER,state.greedPot+amount);
-    uiDirty = true;
-    return "pot";
-  }
-  credit(amount);
-  return "wallet";
 }
 function skinAvailable(skin,progress = state) {
   return skin.mastery ? progress.prestiges>=3 && progress.masteryRewards===ALL_MASTERY : progress.prestiges>=skin.unlock;
@@ -629,7 +488,7 @@ function mergePreview(die) {
 function renderMerges() {
   const groups = new Map();
   for (const die of dice) {
-    if (state.dieStars[die.slot]>=MAX_STARS || greedTarget(die)) continue;
+    if (state.dieStars[die.slot]>=MAX_STARS) continue;
     const key = mergeKey(die);
     if (!groups.has(key)) groups.set(key,[]);
     groups.get(key).push(die);
@@ -672,7 +531,7 @@ function renderMerges() {
   }
 }
 function mergeDice(key) {
-  const pair = dice.filter(die=>!greedTarget(die) && mergeKey(die)===key).slice(0,2);
+  const pair = dice.filter(die=>mergeKey(die)===key).slice(0,2);
   if (pair.length!==2 || state.dieStars[pair[0].slot]>=MAX_STARS) return;
   const [first,second] = pair;
   if (held && pair.includes(held.die)) held = null;
@@ -687,7 +546,6 @@ function mergeDice(key) {
   for (const ranks of [state.dieMaterials,state.dieSpecials,state.dieStars]) ranks.splice(removed,1);
   state.dice = dice.length;
   dice.forEach((die,index)=>{die.slot=index;});
-  if (greedRound) state.greedAttempt.slot = greedRound.die.slot;
   first.rolling = false;
   first.z = 0;
   first.vz = 0;
@@ -737,8 +595,8 @@ materials.forEach(material=>{
   byId("materials").append(badge);
 });
 const recordLabels = ["総獲得コイン","ロール数","共鳴クリティカル","最大共鳴コンボ","フィーバー発動",
-  "1回のフィーバーでの最高ロール配当","合成回数","到達した星","1回のフィーバーでの最多バースト",
-  "最高強欲連投","最大ポット利確","起死回生","ポットバースト","プレイ時間","アーム作動間隔"];
+  "1回のフィーバーでの最高獲得コイン","合成回数","到達した星","1回のフィーバーでの最多バースト",
+  "プレイ時間","アーム作動間隔"];
 for (const label of recordLabels) {
   const line = document.createElement("div");
   line.innerHTML = "<dt>"+label+"</dt><dd></dd>";
@@ -882,8 +740,7 @@ function renderVIP() {
     "今回の獲得 "+format(state.runEarned)+" / "+format(VIP_TARGET)+" コインで転生可能";
   byId("vip-progress").max = nextTarget;
   byId("vip-progress").value = state.runEarned;
-  vipButton.disabled = reward===0 || state.greedPot>0;
-  if (state.greedPot>0) byId("vip-condition").textContent += " · 転生前にポットを利確";
+  vipButton.disabled = reward===0;
   if (vipDialog.open) byId("vip-confirm-text").textContent = "今回の転生で VIPチップを "+format(reward)+" 枚獲得します。";
   skinViews.forEach((button,index)=>{
     const skin = skins[index];
@@ -920,7 +777,7 @@ function renderVIP() {
   }
 }
 vipButton.addEventListener("click",()=>{
-  if (!pendingChips() || state.greedPot) return;
+  if (!pendingChips()) return;
   unlockAudio();
   vipDialog.returnValue = "cancel";
   vipDialog.showModal();
@@ -928,15 +785,13 @@ vipButton.addEventListener("click",()=>{
 });
 vipDialog.addEventListener("close",()=>{
   if (vipDialog.returnValue!=="rebirth") return;
-  if (state.greedPot) return;
   const reward = pendingChips();
   if (!reward) return;
   const old = state;
   const remaining = fresh();
   for (const key of ["rolls","resonances","best","earned","seconds","muted","skin","talents",
     "masteryNeon","masterySpecial","masteryBurst","masteryRewards","collection","achievements","highestStar",
-    "merges","feverStarts","bestFeverCoins","bestFeverBursts","greedBest","greedBestCollect",
-    "greedRescues","greedBusts"]) remaining[key] = old[key];
+    "merges","feverStarts","bestFeverCoins","bestFeverBursts"]) remaining[key] = old[key];
   remaining.vipChips = Math.min(Number.MAX_SAFE_INTEGER,old.vipChips+reward);
   remaining.prestiges = Math.min(Number.MAX_SAFE_INTEGER,old.prestiges+1);
   const newSkin = skins.findIndex(skin=>skin.unlock>old.prestiges && skin.unlock<=remaining.prestiges);
@@ -1043,7 +898,6 @@ function renderMaterials() {
 }
 function renderUI() {
   renderFever();
-  renderGreed();
   if (!byId("shop").hidden) {
     renderGoal();
     renderSpecials();
@@ -1078,7 +932,6 @@ function renderUI() {
     const mins = Math.floor(state.seconds/60), secs = Math.floor(state.seconds%60);
     const values = [format(state.earned),format(state.rolls),format(state.resonances),format(state.best),
       format(state.feverStarts),format(state.bestFeverCoins),format(state.merges),"★"+state.highestStar,format(state.bestFeverBursts),
-      format(state.greedBest),format(state.greedBestCollect),format(state.greedRescues),format(state.greedBusts),
       mins+" 分 "+secs+" 秒",state.arms ? armInterval().toFixed(2)+" 秒" : "未雇用"];
     byId("records").querySelectorAll("dd").forEach((node,index)=>{node.textContent=values[index];});
   }
@@ -1204,7 +1057,6 @@ function sound(type,combo = 1) {
     tone(440,554,.16,.038,"triangle");
     tone(830,1047,.26,.040,"sine",.071);
   }
-  if (type === "hazard") tone(240,155,.19,.043,"triangle");
   if (type === "blast") tone(224,60,.16,.045,"triangle");
   if (type === "achievement") {
     tone(587,587,.13,.027,"triangle");
@@ -1364,8 +1216,6 @@ function resetTable() {
   burstPayout = 0;
   held = null; holdMode = false; slamReady = time; impactTime = -Infinity; hitStop = 0; pointer = null;
   throwStatusUntil = time;
-  greedRound = null;
-  lastGreedDie = null;
   state.dieMaterials.length = state.dice;
   state.dieSpecials.length = state.dice;
   state.dieStars.length = state.dice;
@@ -1394,7 +1244,7 @@ function confine(die,rebound = true) {
   die.y = y;
 }
 function launch(die, x, y, strength, manual, gesture = null) {
-  if ((greedTarget(die) && !gesture?.greed) || isHeld(die) || isFusing(die) || (!manual && !gesture?.reroll && pointer?.target===die) ||
+  if (isHeld(die) || isFusing(die) || (!manual && !gesture?.reroll && pointer?.target===die) ||
       (!gesture?.reroll && (die.rolling || time-die.launched < .19))) return false;
   const spread = gesture?.angle===undefined ? .34 : .10;
   const angle = (gesture?.angle ?? Math.atan2(die.y-y,die.x-x))+random(-spread,spread);
@@ -1412,7 +1262,6 @@ function launch(die, x, y, strength, manual, gesture = null) {
   die.fromBlast = false;
   die.echo = null;
   die.manualThrow = manual;
-  die.potEligible = manual || (!!gesture?.reroll && !gesture.greed);
   die.hardThrow = !!gesture?.hard;
   die.slamAnchor = null;
   die.trail = [];
@@ -1450,11 +1299,9 @@ function waveRadius(wave) {
   return Math.min(board.w,board.h)*wave.range*(1-(1-t)**2);
 }
 function tableSlam(point) {
+  if (time<slamReady || point.x<board.x || point.x>board.x+board.w || point.y<board.y || point.y>board.y+board.h) return false;
   const radius = SLAM_RANGE*Math.min(board.w,board.h);
-  if (point.x<board.x || point.x>board.x+board.w || point.y<board.y || point.y>board.y+board.h) return false;
-  if (greedRound && Math.hypot(greedRound.die.x-point.x,greedRound.die.y-point.y)<=radius && rescueGreed("slam")) return true;
-  if (time<slamReady) return false;
-  const targets = dice.filter(die=>!greedTarget(die) && !isHeld(die) && !isFusing(die) &&
+  const targets = dice.filter(die=>!isHeld(die) && !isFusing(die) &&
     (die.rolling || time-(die.landedAt ?? -Infinity)<.65 || held))
     .map(die=>({die,distance:Math.hypot(die.x-point.x,die.y-point.y)}))
     .filter(item=>item.distance<=radius)
@@ -1585,12 +1432,12 @@ function settle(die) {
     (highStar && highCombo && specialActive ? 6 : 4) : 0;
   const payout = Math.round((base+bonus)*(1+boost.bonus/100)*(multiplier===2 ? 1+(heat?.feverBonus ?? 0) : 1))*(burst || multiplier);
   const amount = Math.round(payout*(1+rewards.income/100));
-  const destination = applyGreedPayout(die,amount,base);
-  if (multiplier===2 && destination!=="bust") {
+  credit(amount);
+  if (multiplier===2) {
     state.feverCoins = Math.min(Number.MAX_SAFE_INTEGER,state.feverCoins+amount);
     state.bestFeverCoins = Math.max(state.bestFeverCoins,state.feverCoins);
   }
-  if (burst && destination!=="bust") {
+  if (burst) {
     state.feverBurstRolls++;
     state.bestFeverBursts = Math.max(state.bestFeverBursts,state.feverBurstRolls);
     burstPayout = time<burstUntil ? Math.max(burstPayout,burst) : burst;
@@ -1600,19 +1447,13 @@ function settle(die) {
     trackMastery(false);
   }
   sound("land");
-  if (destination!=="bust") sound("coin");
+  sound("coin");
   const life = bonus || burst ? 1.1 : .85;
-  if (destination!=="bust") placePopup({x:die.x,y:die.y-14*unit,life,total:life,amount,
-    crit:bonus ? streak : 0,fever:multiplier===2,burst,grand,pot:destination==="pot"});
+  placePopup({x:die.x,y:die.y-14*unit,life,total:life,amount,crit:bonus ? streak : 0,fever:multiplier===2,burst,grand});
   awardMilestones();
 }
 function tickDie(die,dt) {
   if (isFusing(die) || isHeld(die)) return;
-  if (greedTarget(die) && time<greedRound.warnUntil) {
-    die.z = Math.max(2*unit,die.z-dt*4*unit);
-    die.rz += dt*.45;
-    return;
-  }
   die.x += die.vx*dt;
   die.y += die.vy*dt;
   const friction = Math.exp(-(die.rolling ? 1.15 : 8)*dt);
@@ -1632,8 +1473,6 @@ function tickDie(die,dt) {
   die.rx += die.sx*dt;
   die.ry += die.sy*dt;
   die.rz += die.sz*dt;
-  greedLanding(die);
-  if (greedTarget(die) && time<greedRound.warnUntil) return;
   if (die.z <= 0) {
     die.z = 0;
     hardImpact(die);
@@ -1697,7 +1536,7 @@ function tickArm(arm,dt) {
     if (arm.sweep.elapsed>.66) arm.sweep = null;
   }
   if (time >= arm.next) {
-    const available = dice.filter(die=>!greedTarget(die) && !isFusing(die) && !isHeld(die));
+    const available = dice.filter(die=>!isFusing(die) && !isHeld(die));
     const settled = available.filter(die=>!die.rolling);
     const targets = settled.length ? settled : available;
     const target = targets[Math.floor(Math.random()*targets.length)];
@@ -1712,10 +1551,10 @@ function tickArm(arm,dt) {
     const sweep = arm.sweep;
     sweep.fired = true;
     let target = sweep.target;
-    if (target.rolling || greedTarget(target) || isFusing(target) || isHeld(target)) {
+    if (target.rolling || isFusing(target) || isHeld(target)) {
       let nearest = Infinity;
       for (const die of dice) {
-        if (die.rolling || greedTarget(die) || isFusing(die) || isHeld(die)) continue;
+        if (die.rolling || isFusing(die) || isHeld(die)) continue;
         const distance = Math.hypot(die.x-sweep.x,die.y-sweep.y);
         if (distance>=nearest) continue;
         target = die;
@@ -2185,7 +2024,6 @@ function placePopup(popup) {
   nearest.fever ||= popup.fever;
   nearest.burst = Math.max(nearest.burst ?? 0,popup.burst ?? 0);
   nearest.grand ||= popup.grand;
-  nearest.pot ||= popup.pot;
   nearest.life = Math.max(nearest.life,.4);
 }
 function drawPopup(popup) {
@@ -2202,7 +2040,7 @@ function drawPopup(popup) {
   ctx.lineWidth=Math.min(3*unit,popupGrid.h*.05);
   ctx.strokeStyle="#17322a";
   ctx.font="800 "+amountSize+"px 'Segoe UI',sans-serif";
-  const label=(popup.pot ? "ポット＋" : "＋")+short(popup.amount);
+  const label="＋"+short(popup.amount);
   ctx.strokeText(label,x,y,maxWidth);
   ctx.fillStyle=popup.burst ? "#ffe48b" : popup.fever ? "#fff0ad" : popup.crit ? "#c7ffcc" : "#ffe4a1";
   ctx.fillText(label,x,y,maxWidth);
@@ -2374,23 +2212,6 @@ function draw() {
     ctx.restore();
   }
   for (const fusion of fusions) drawFusion(fusion);
-  if (greedRound) {
-    const {die,warnUntil} = greedRound;
-    const warning = time<warnUntil;
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(die.x,die.y,31*unit,25*unit,0,0,Math.PI*2);
-    ctx.strokeStyle = warning ? "#ff9b7b" : "#e9ac81";
-    ctx.lineWidth = (warning ? 3.6 : 1.7)*unit;
-    ctx.stroke();
-    if (warning) {
-      ctx.fillStyle = "#ffe6bf";
-      ctx.font = "800 "+Math.max(10,13*unit)+"px 'Segoe UI',sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("☠ "+die.nextFace,die.x,die.y-24*unit);
-    }
-    ctx.restore();
-  }
   for (const p of particles) if (p.life>0) {
     ctx.globalAlpha=clamp(p.life/p.total,0,1);
     diamond(ctx,p.x,p.y,p.size,p.color);
@@ -2402,38 +2223,6 @@ function draw() {
 
 const holdButton = byId("hold-toggle");
 const throwHint = byId("throw-hint"), slamStatus = byId("slam-status");
-const greedView = {strip:byId("greed-strip"),coins:byId("greed-coins"),rate:byId("greed-rate"),
-  status:byId("greed-status"),collect:byId("greed-collect"),push:byId("greed-push")};
-function renderGreed() {
-  const pending = !!state.greedAttempt, warning = !!greedRound && time<greedRound.warnUntil;
-  const rescue = warning && !state.greedUsed;
-  const danger = greedDanger();
-  const faces = Array.from({length:danger},(_,i)=>i+1).join("・");
-  const coins = short(state.greedPot);
-  const rate = "×"+GREED_MULTIPLIERS[state.greedDepth].toFixed(1);
-  const next = danger ? "×"+GREED_MULTIPLIERS[state.greedDepth+1].toFixed(1) : "";
-  const ready = !pending && state.greedPot && danger && !!greedChoice();
-  let status = "振って貯める · 利確でコインを回収";
-  if (state.greedPot && danger) status = "危険目 ☠ "+faces+" · 保証 "+short(greedGuarantee())+" · "+
-    (!ready ? "着地または固定解除後に再挑戦" :
-      state.greedUsed ? "救済使用済み" : held?.die.face>danger ? "ホールドの盾をセット可能" : "救済1回");
-  if (state.greedPot && !danger) status = "最高倍率 · 利確できます";
-  if (pending) status = "再投擲中 · 危険目 ☠ "+faces+(state.greedAttempt.shield ? " · ホールドの盾あり" : "");
-  if (warning) status = rescue ? "危険目！ フェルトをスラムして救済" : "危険目！ 今回の救済は使用済み";
-  const label = rescue ? "救済スラム" : next ? "再挑戦 "+next : "上限";
-  if (greedView.coins.textContent!==coins) greedView.coins.textContent = coins;
-  if (greedView.rate.textContent!==rate) greedView.rate.textContent = rate;
-  if (greedView.status.textContent!==status) greedView.status.textContent = status;
-  if (greedView.push.textContent!==label) greedView.push.textContent = label;
-  greedView.collect.disabled = pending || !state.greedPot;
-  greedView.push.disabled = !rescue && !ready;
-  greedView.strip.classList.toggle("danger",warning);
-}
-greedView.collect.addEventListener("click",collectGreed);
-greedView.push.addEventListener("click",()=>{
-  if (greedRound && time<greedRound.warnUntil && !state.greedUsed) tableSlam(greedRound.die);
-  else pushGreed();
-});
 function showThrowStatus(message) {
   throwStatus = message;
   throwStatusUntil = time+1.9;
@@ -2460,7 +2249,7 @@ function toggleHold() {
   renderThrowControls();
 }
 function chooseHold(die) {
-  if (!die || die.rolling || greedTarget(die) || isFusing(die)) {
+  if (!die || die.rolling || isFusing(die)) {
     showThrowStatus("ホールドは止まったダイスを選択");
     renderThrowControls();
     return;
@@ -2627,7 +2416,7 @@ document.addEventListener("keydown",event=>{
   unlockAudio();
   if (event.code==="KeyH") toggleHold();
   else if (event.code==="KeyS") {
-    const target = greedRound?.die ?? dice.find(die=>!isHeld(die) && die.rolling) ?? dice.find(die=>!isHeld(die));
+    const target = dice.find(die=>!isHeld(die) && die.rolling) ?? dice.find(die=>!isHeld(die));
     if (target) tableSlam(target);
   } else keyboardRoll();
 });
@@ -2635,7 +2424,6 @@ document.addEventListener("keydown",event=>{
 applySkin();
 resize();
 resetTable();
-if (state.greedAttempt) launchGreed(dice[state.greedAttempt.slot],state.greedAttempt);
 trackMastery();
 draw();
 updateSound();
@@ -2667,7 +2455,6 @@ function frame(now) {
     }
     if (now-lastThrowUI>=100) {
       renderThrowControls();
-      renderGreed();
       lastThrowUI=now;
     }
   }
