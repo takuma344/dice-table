@@ -14,6 +14,12 @@ const materials = [
 const caps = {dice:40, material:3, arms:6, speed:7, wave:8};
 const VIP_TARGET = 40000;
 const MATERIAL_PRICES = [85,650,4200];
+const SPECIAL_DICE = {
+  blast:{name:"爆裂ダイス",mark:"爆",icon:"wave",color:"#ff9d63",cost:650,detail:"出目5・6で周囲に爆裂波を放つ"},
+  aura:{name:"増幅ダイス",mark:"増",icon:"gem",color:"#90eed0",cost:950,detail:"静止中、近くの他のダイスの配当を25%増やす"},
+  heat:{name:"熱気ダイス",mark:"熱",icon:"speed",color:"#ffe08a",cost:850,detail:"出目4〜6でフィーバーゲージを6ポイント加算"},
+};
+const AURA_RANGE = .20;
 const skins = [
   {id:"classic",name:"クラシックグリーン",unlock:0,felt:["#367054","#265b44","#133f33"],inlay:"#d9c48a",
     rail:["#9d6848","#72462f","#9d6441","#78432e","#563220"],lip:["#5d3727","#613827","#47271e","#2b1915"]},
@@ -81,7 +87,7 @@ function normalizeMaterial(rank,fallback = 0) {
   return Number.isFinite(rank) ? clamp(Math.floor(rank),0,caps.material) : fallback;
 }
 function fresh() {
-  return {coins:0,dice:1,dieMaterials:[0],arms:0,speed:0,wave:0,rolls:0,resonances:0,
+  return {coins:0,dice:1,dieMaterials:[0],dieSpecials:[null],arms:0,speed:0,wave:0,rolls:0,resonances:0,
     best:0,earned:0,seconds:0,muted:false,feverCharge:0,feverLeft:0,runEarned:0,
     vipChips:0,prestiges:0,skin:0,talents:Object.fromEntries(talents.map(talent=>[talent.id,0])),
     savedAt:Date.now()};
@@ -93,7 +99,7 @@ function load() {
     const raw = JSON.parse(localStorage.getItem(SAVE));
     if (!raw || typeof raw !== "object") return initial;
     for (const key of Object.keys(initial)) {
-      if (key === "talents" || key === "dieMaterials") continue;
+      if (key === "talents" || key === "dieMaterials" || key === "dieSpecials") continue;
       if (key === "muted") initial[key] = raw[key] === true;
       else if (key === "feverLeft" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,FEVER_DURATION);
       else if (key === "feverCharge" && Number.isFinite(raw[key])) initial[key] = clamp(Math.floor(raw[key]),0,99);
@@ -111,6 +117,14 @@ function load() {
     const legacyRank = normalizeMaterial(raw.material);
     initial.dieMaterials = Array.from({length:initial.dice},(_,i)=>
       ranks ? normalizeMaterial(ranks[i],initial.talents.materialStart) : legacyRank);
+    const specials = Array.isArray(raw.dieSpecials) ? raw.dieSpecials : [];
+    const installed = new Set();
+    initial.dieSpecials = Array.from({length:initial.dice},(_,i)=>{
+      const type = specials[i];
+      if (typeof type!=="string" || !Object.hasOwn(SPECIAL_DICE,type) || installed.has(type)) return null;
+      installed.add(type);
+      return type;
+    });
     if (!skins[initial.skin] || skins[initial.skin].unlock>initial.prestiges) initial.skin = 0;
   } catch {
     // An invalid save falls back to the starting table.
@@ -152,9 +166,12 @@ function credit(amount) {
   uiDirty = true;
 }
 function chargeFever(linked,combo,sameWave = false) {
-  if (state.feverLeft>0) return;
   const charge = 5+3*Math.min(4,linked-1)+Math.min(5,combo-1)+(sameWave ? 3 : 0);
-  state.feverCharge += Math.round(charge*(1+.2*state.talents.fever));
+  gainFever(Math.round(charge*(1+.2*state.talents.fever)));
+}
+function gainFever(charge) {
+  if (state.feverLeft>0) return;
+  state.feverCharge += charge;
   if (state.feverCharge<100) return;
   state.feverCharge = 0;
   state.feverLeft = FEVER_DURATION;
@@ -207,6 +224,50 @@ for (const item of upgrades) {
   upgradeViews.set(item.key,{detail:row.querySelector(".upgrade-detail"),button,
     label:button.firstElementChild,price:button.lastElementChild,amount:button.lastElementChild.lastElementChild});
   byId("upgrades").append(row);
+}
+const specialViews = new Map();
+for (const [type,special] of Object.entries(SPECIAL_DICE)) {
+  const row = document.createElement("article");
+  row.className = "upgrade";
+  row.style.setProperty("--special-color",special.color);
+  row.innerHTML = '<span class="upgrade-icon special-icon">'+icon(special.icon)+'</span><div><h4 class="upgrade-name">'+
+    special.name+'</h4><p class="upgrade-detail">'+special.detail+'</p><p class="special-status"></p></div>'+
+    '<button class="buy"><span class="buy-label"></span><span class="price">'+icon("coin")+'<span>'+format(special.cost)+'</span></span></button>';
+  const button = row.querySelector("button");
+  button.addEventListener("click",()=>buySpecial(type));
+  specialViews.set(type,{button,status:row.querySelector(".special-status")});
+  byId("special-dice").append(row);
+}
+function buySpecial(type) {
+  if (!Object.hasOwn(SPECIAL_DICE,type)) return;
+  const special = SPECIAL_DICE[type];
+  const slot = state.dieSpecials.lastIndexOf(null);
+  if (state.dice<3 || slot<0 || state.coins<special.cost || state.dieSpecials.includes(type)) return;
+  unlockAudio();
+  state.coins -= special.cost;
+  state.dieSpecials[slot] = type;
+  markedDie = dice[slot];
+  markedUntil = time+1.3;
+  sound("buy");
+  save();
+  renderUI();
+  announce("ダイス #"+(slot+1)+" が"+special.name+"になりました");
+}
+function renderSpecials() {
+  const slot = state.dieSpecials.lastIndexOf(null);
+  for (const [type,view] of specialViews) {
+    const special = SPECIAL_DICE[type];
+    const installed = state.dieSpecials.indexOf(type);
+    const available = state.dice>=3 && slot>=0;
+    const label = installed>=0 ? "変換済み" : "変換";
+    view.status.textContent = installed>=0 ? "ダイス #"+(installed+1) : state.dice<3 ? "ダイス3個で解放" :
+      slot<0 ? "通常ダイスが必要" : "対象 ダイス #"+(slot+1);
+    view.button.disabled = installed>=0 || !available || state.coins<special.cost;
+    view.button.firstElementChild.textContent = label;
+    view.button.lastElementChild.hidden = installed>=0;
+    view.button.setAttribute("aria-label",special.name+" "+label+
+      (installed>=0 ? "" : " "+format(special.cost)+" コイン"));
+  }
 }
 materials.forEach(material=>{
   const badge = document.createElement("span");
@@ -428,7 +489,10 @@ function renderMaterials() {
 }
 function renderUI() {
   renderFever();
-  if (!byId("shop").hidden) renderGoal();
+  if (!byId("shop").hidden) {
+    renderGoal();
+    renderSpecials();
+  }
   if (!byId("vip").hidden || vipDialog.open) renderVIP();
   byId("coins").textContent = short(state.coins);
   byId("coins").title = format(state.coins);
@@ -560,6 +624,7 @@ function sound(type,combo = 1) {
   if (type === "hit") tone(random(210,330),92,.046,.037,"triangle");
   if (type === "land") tone(random(170,230),72,.058,.045,"triangle");
   if (type === "wave") tone(165,54,.15,.049,"sine");
+  if (type === "blast") tone(224,60,.16,.045,"triangle");
   if (type === "coin" || type === "buy") {
     tone(720,880,.082,.03,"sine");
     tone(1050,1160,.092,.024,"sine",.036);
@@ -652,6 +717,7 @@ function restAngles(face) {
 function spawnDie() {
   const slot = dice.length;
   state.dieMaterials[slot] ??= state.talents.materialStart;
+  state.dieSpecials[slot] ??= null;
   const starts = [[.28,.42],[.65,.33],[.6,.68]];
   const start = state.dice===1 ? [.5,.38] : starts[dice.length];
   const face = start ? [3,5,2][dice.length] : 1+Math.floor(Math.random()*6);
@@ -682,6 +748,7 @@ function resetTable() {
   dice = []; arms = []; waves = []; beams = []; popups = []; particles = [];
   markedDie = null;
   state.dieMaterials.length = state.dice;
+  state.dieSpecials.length = state.dice;
   recent = Array.from({length:7},()=>[]);
   streak = 0; lastCrit = -Infinity; shakeStart = -Infinity; shakeAmplitude = 0;
   for (let i=0;i<state.dice;i++) spawnDie();
@@ -712,20 +779,21 @@ function launch(die, x, y, strength, manual) {
   die.sz = random(-7,7);
   die.nextFace = 1+Math.floor(Math.random()*6);
   die.manualBatch = null;
+  die.fromBlast = false;
   die.launched = time;
   die.rolling = true;
   die.bounces = 0;
   if (manual) sound("hit");
   return true;
 }
-function addWave(source,automated = false) {
-  const batch = automated ? null : Symbol();
-  if (!automated) source.manualBatch = batch;
-  const range = automated ? armWaveRange(state.wave) : waveRange(state.wave);
-  const strength = automated ? .82+.033*state.wave : 1+.062*state.wave;
-  waves.push({x:source.x,y:source.y,range,t:0,life:.34,strength,batch,automated,hit:new Set([source])});
+function addWave(source,kind = "manual") {
+  const batch = kind==="manual" ? Symbol() : null;
+  if (batch) source.manualBatch = batch;
+  const range = kind==="blast" ? .16+.006*state.wave : kind==="arm" ? armWaveRange(state.wave) : waveRange(state.wave);
+  const strength = kind==="blast" ? .85 : kind==="arm" ? .82+.033*state.wave : 1+.062*state.wave;
+  waves.push({x:source.x,y:source.y,range,t:0,life:.34,strength,batch,kind,hit:new Set([source])});
   if (waves.length > 24) waves.shift();
-  if (!automated) sound("wave");
+  if (kind!=="arm") sound(kind==="blast" ? "blast" : "wave");
 }
 function waveRadius(wave) {
   const t = clamp(wave.t/wave.life,0,1);
@@ -775,8 +843,21 @@ function settle(die) {
     spark(die.x,die.y,["#cbb074","#fff1ad"],4);
   }
   candidates.push({die,t:time,batch:die.manualBatch});
+  const special = state.dieSpecials[die.slot];
+  if (special==="blast" && die.face>=5 && !die.fromBlast) {
+    addWave(die,"blast");
+    spark(die.x,die.y,["#ff9d63","#ffe0a0"],10);
+  }
+  if (special==="heat" && die.face>=4 && state.feverLeft===0) {
+    gainFever(6);
+    spark(die.x,die.y,["#ffe08a","#fff0c4"],8);
+  }
+  const aura = dice[state.dieSpecials.indexOf("aura")];
+  const boosted = aura && aura!==die && !aura.rolling &&
+    Math.hypot(die.x-aura.x,die.y-aura.y)<=Math.min(board.w,board.h)*AURA_RANGE;
+  if (boosted) spark(die.x,die.y,["#90eed0"],4);
   const multiplier = feverMultiplier();
-  const amount = (base+bonus)*multiplier;
+  const amount = Math.round((base+bonus)*(boosted ? 1.25 : 1))*multiplier;
   credit(amount);
   sound("land");
   sound("coin");
@@ -886,7 +967,7 @@ function tickArm(arm,dt) {
     spark(target.x,target.y,["#8cfacf","#d5ffcd"],7);
     sound("hit");
     if (state.talents.chain) cascadeArm(target);
-    if (state.talents.armWave) addWave(target,true);
+    if (state.talents.armWave) addWave(target,"arm");
   }
 }
 function cascadeArm(source) {
@@ -923,8 +1004,9 @@ function step(dt) {
     for (const die of dice) {
       if (!wave.hit.has(die) && Math.hypot(die.x-wave.x,die.y-wave.y)<=radius) {
         wave.hit.add(die);
-        if (launch(die,wave.x,wave.y,wave.strength,!wave.automated)) {
+        if (launch(die,wave.x,wave.y,wave.strength,wave.kind==="manual")) {
           die.manualBatch = wave.batch;
+          die.fromBlast = wave.kind==="blast";
         }
       }
     }
@@ -1149,6 +1231,7 @@ function projectDie(die) {
 function drawDie(die) {
   const rank = state.dieMaterials[die.slot];
   const material = materials[rank];
+  const special = SPECIAL_DICE[state.dieSpecials[die.slot]];
   const {size,points} = projectDie(die);
   for (const [value,a,b,c,d] of faces) {
     const p=points[a], q=points[b], r=points[c], s=points[d];
@@ -1160,7 +1243,7 @@ function drawDie(die) {
       [[0,bright ? material.high : material.low],[1,bright ? material.low : material.side]]);
     ctx.fill();
     ctx.lineWidth = .86*unit;
-    ctx.strokeStyle = material.edge;
+    ctx.strokeStyle = special && bright ? special.color : material.edge;
     ctx.stroke();
     if (rank===0 && bright) {
       ctx.save();
@@ -1184,6 +1267,23 @@ function drawDie(die) {
       ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);
       ctx.fillStyle=material.pip;ctx.fill();
     }
+    ctx.restore();
+  }
+  if (special) {
+    const x = die.x-die.z*.1+size*.78, y = die.y-die.z*.51-size*.95;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x,y,Math.max(6,7.4*unit),0,Math.PI*2);
+    ctx.fillStyle = "#142e28";
+    ctx.fill();
+    ctx.strokeStyle = special.color;
+    ctx.lineWidth = Math.max(1,unit);
+    ctx.stroke();
+    ctx.font = "750 "+Math.max(8,9*unit)+"px 'Segoe UI',sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.fillStyle = special.color;
+    ctx.fillText(special.mark,x,y);
     ctx.restore();
   }
 }
@@ -1222,7 +1322,7 @@ function drawWave(wave) {
   const radius = waveRadius(wave);
   if (radius<=0) return;
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius,0,Math.PI*2);
-  const color = wave.automated ? "145,247,213" : "255,213,137";
+  const color = wave.kind==="blast" ? "255,153,91" : wave.kind==="arm" ? "145,247,213" : "255,213,137";
   ctx.strokeStyle="rgba("+color+","+(1-t)*.66+")";
   ctx.lineWidth=Math.min(radius*.18,(3.5-2*t)*unit);ctx.stroke();
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius*.8,0,Math.PI*2);
@@ -1340,6 +1440,16 @@ function draw() {
   if (state.feverLeft>0) {
     ctx.fillStyle=feverGlow;
     ctx.fillRect(board.x,board.y,board.w,board.h);
+  }
+  const aura = dice[state.dieSpecials.indexOf("aura")];
+  if (aura && !aura.rolling) {
+    ctx.beginPath();
+    ctx.arc(aura.x,aura.y,Math.min(board.w,board.h)*AURA_RANGE,0,Math.PI*2);
+    ctx.fillStyle = "#90eed01a";
+    ctx.fill();
+    ctx.strokeStyle = "#90eed06b";
+    ctx.lineWidth = Math.max(.75,unit);
+    ctx.stroke();
   }
   for (const wave of waves) drawWave(wave);
   for (const die of dice) {
