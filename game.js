@@ -37,23 +37,23 @@ const talents = [
 ];
 const upgrades = [
   {key:"dice", icon:"die", title:"ダイス購入", action:"購入",
-    cost:s=>s.dice<3 ? [8,12][s.dice-1] : 18*1.245**(s.dice-3)*1.16**Math.max(0,s.dice-12),
-    detail:s=>(s.dice + " / 40 個 · ロールの収益を増加")},
-  {key:"material", icon:"gem", title:"ダイスの材質", action:"進化", cost:s=>[175, 2200, 21000][s.material],
-    detail:s=>materials[s.material].name+" ×"+materials[s.material].multiplier+
-      (s.material < caps.material ? " → "+materials[s.material+1].name : "")},
-  {key:"arms", icon:"arm", title:"ロボットアーム", action:"雇用", cost:s=>43*2.65**s.arms,
-    detail:s=>s.arms+" / 6 基 · 自動でダイスを弾く"},
-  {key:"speed", icon:"speed", title:"アーム速度", action:"強化", cost:s=>105*1.85**s.speed,
+    cost:s=>s.dice<5 ? [14,22,34,48][s.dice-1] : 65*1.19**(s.dice-5)*1.15**Math.max(0,s.dice-12),
+    detail:s=>s.dice+" / 40 個 · 同時に振れるダイスを増やす"},
+  {key:"material", icon:"gem", title:"ダイスの材質", action:"1個進化"},
+  {key:"arms", icon:"arm", title:"ロボットアーム", action:"雇用", cost:s=>95*2.48**s.arms,
+    detail:s=>s.arms+" / 6 基 · "+(s.talents.chain ? "1個を投擲し、近くへ連鎖" : "1作動につきダイス1個")},
+  {key:"speed", icon:"speed", title:"アーム速度", action:"強化", cost:s=>125*1.72**s.speed,
     detail:s=>s.arms ? "Lv. "+s.speed+" · "+armInterval().toFixed(1)+" 秒ごとに作動" : "ロボットアームを雇うと解放"},
   {key:"wave", icon:"wave", title:"テーブル衝撃波", action:s=>s.wave ? "強化" : "解放",
-    cost:s=>s.wave<2 ? [16,38][s.wave] : 47*1.82**(s.wave-1),
-    detail:s=>s.wave ? "Lv. "+s.wave+" · 手動ロールの範囲と威力を強化" :
-      "Lv. 0 · 周囲のダイスを弾く衝撃波を解放"},
+    cost:s=>s.wave<2 ? [26,55][s.wave] : 95*1.68**(s.wave-2),
+    detail:s=>s.wave ? "Lv. "+s.wave+" · 手動で短辺の "+(waveRange(s.wave)*100).toFixed(1).replace(/\.0$/,"")+"% まで巻き込む" :
+      "Lv. 0 · 近くのダイスも一緒に振れる"},
 ];
 const SAVE = "lucky-dice-table.v1";
 const RESONANCE_WINDOW = .8;
 const FEVER_DURATION = 10;
+const SHAKE_COOLDOWN = .85;
+const SHAKE_DURATION = .24;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const number = new Intl.NumberFormat("ja-JP");
 const compact = new Intl.NumberFormat("ja-JP",{notation:"compact",maximumFractionDigits:1});
@@ -64,11 +64,16 @@ const random = (min,max) => min + Math.random()*(max-min);
 const ease = t => t*t*(3-2*t);
 const icon = name => '<svg aria-hidden="true"><use href="#i-'+name+'"/></svg>';
 function interval(level) {return Math.max(1.1,4.5*.81**level);}
+function chainRange(rank,speed) {return .13+.025*rank+.01*speed;}
+function waveRange(level) {return .10+.025*(level-1);}
 function feverMultiplier() {return state.feverLeft>0 ? 2 : 1;}
 function armInterval() {return interval(state.speed)/feverMultiplier();}
-function rollValue(face) {return Math.round((face*2+1)*materials[state.material].multiplier*(1+.2*state.talents.income));}
+function rollValue(face,rank = 0) {return Math.round(face*materials[rank].multiplier*(1+.2*state.talents.income));}
+function normalizeMaterial(rank,fallback = 0) {
+  return Number.isFinite(rank) ? clamp(Math.floor(rank),fallback,caps.material) : fallback;
+}
 function fresh() {
-  return {coins:0,dice:1,material:0,arms:0,speed:0,wave:0,rolls:0,resonances:0,
+  return {coins:0,dice:1,dieMaterials:[0],materialBase:0,arms:0,speed:0,wave:0,rolls:0,resonances:0,
     best:0,earned:0,seconds:0,muted:false,feverCharge:0,feverLeft:0,runEarned:0,
     vipChips:0,prestiges:0,skin:0,talents:Object.fromEntries(talents.map(talent=>[talent.id,0])),
     savedAt:Date.now()};
@@ -80,7 +85,7 @@ function load() {
     const raw = JSON.parse(localStorage.getItem(SAVE));
     if (!raw || typeof raw !== "object") return initial;
     for (const key of Object.keys(initial)) {
-      if (key === "talents") continue;
+      if (key === "talents" || key === "dieMaterials" || key === "materialBase") continue;
       if (key === "muted") initial[key] = raw[key] === true;
       else if (key === "feverLeft" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,FEVER_DURATION);
       else if (key === "feverCharge" && Number.isFinite(raw[key])) initial[key] = clamp(Math.floor(raw[key]),0,99);
@@ -89,6 +94,9 @@ function load() {
         initial[key] = clamp(key === "seconds" ? raw[key] : Math.floor(raw[key]),key === "dice" ? 1 : 0,max);
       }
     }
+    const ranks = Array.isArray(raw.dieMaterials) ? raw.dieMaterials : null;
+    initial.materialBase = normalizeMaterial(ranks ? raw.materialBase : raw.material);
+    initial.dieMaterials = Array.from({length:initial.dice},(_,i)=>normalizeMaterial(ranks?.[i],initial.materialBase));
     if (!Number.isFinite(raw.runEarned)) initial.runEarned = initial.earned;
     for (const talent of talents) {
       const rank = raw.talents?.[talent.id];
@@ -107,7 +115,8 @@ let board;
 let dice = [], arms = [], waves = [], beams = [], particles = [], popups = [];
 let popupGrid, feverGlow;
 let recent = Array.from({length:7},()=>[]);
-let streak = 0, lastCrit = -Infinity, shake = 0;
+let streak = 0, lastCrit = -Infinity, shakeStart = -Infinity, shakeAmplitude = 0;
+let markedDie = null, markedUntil = 0;
 let uiDirty = true;
 let noticeTimer;
 let hiddenAt = document.hidden ? Date.now() : 0;
@@ -133,9 +142,9 @@ function credit(amount) {
   state.runEarned = Math.min(Number.MAX_SAFE_INTEGER,state.runEarned+amount);
   uiDirty = true;
 }
-function chargeFever(linked,combo) {
+function chargeFever(linked,combo,sameWave = false) {
   if (state.feverLeft>0) return;
-  const charge = 5+Math.min(10,(linked-1)*2)+Math.min(7,combo-1);
+  const charge = 5+3*Math.min(4,linked-1)+Math.min(5,combo-1)+(sameWave ? 3 : 0);
   state.feverCharge += Math.round(charge*(1+.2*state.talents.fever));
   if (state.feverCharge<100) return;
   state.feverCharge = 0;
@@ -155,8 +164,15 @@ function tickFever(dt) {
 function idleReward(from, to) {
   const seconds = Math.min(14400,(to-from)/1000);
   if (seconds < 12 || !state.arms) return 0;
-  const estimatedRolls = Math.min(state.dice*1.25,state.arms*state.dice*.57/interval(state.speed));
-  const amount = Math.floor(seconds*estimatedRolls*rollValue(3.5));
+  const chain = state.talents.chain;
+  const splash = chain ? Math.min(chain*2,(state.dice-1)*chainRange(chain,state.speed)) : 0;
+  const estimatedRolls = Math.min(state.dice*1.25,state.arms*(1+splash)/interval(state.speed));
+  const total = state.dieMaterials.reduce((sum,rank)=>{
+    for (let face=1;face<=6;face++) sum += rollValue(face,rank);
+    return sum;
+  },0);
+  const averageRoll = total/(6*state.dice);
+  const amount = Math.floor(seconds*estimatedRolls*averageRoll);
   credit(amount);
   return amount;
 }
@@ -185,7 +201,8 @@ materials.forEach(material=>{
   const badge = document.createElement("span");
   badge.className = "material";
   const label = material.name === "ネオンレーザー" ? "ネオン" : material.name;
-  badge.innerHTML = icon("die")+label;
+  badge.style.setProperty("--die-color",material.low);
+  badge.innerHTML = '<span class="material-swatch" aria-hidden="true"></span><span>'+label+'</span><strong>0</strong>';
   badge.title = material.name+" ×"+material.multiplier;
   byId("materials").append(badge);
 });
@@ -305,6 +322,8 @@ vipDialog.addEventListener("close",()=>{
   if (newSkin>=0) remaining.skin = newSkin;
   remaining.coins = remaining.talents.bankroll*20;
   remaining.dice = 1+remaining.talents.dice;
+  remaining.materialBase = Math.min(...old.dieMaterials);
+  remaining.dieMaterials = Array(remaining.dice).fill(remaining.materialBase);
   state = remaining;
   resetTable();
   applySkin();
@@ -331,21 +350,75 @@ function renderFever() {
   feverView.progress.setAttribute("aria-valuenow",String(Math.round(fraction*100)));
   feverView.fill.style.transform = "scaleX("+fraction+")";
 }
+const goalView = {box:byId("shop-goal"),label:byId("goal-label"),value:byId("goal-value"),
+  reason:byId("goal-reason"),progress:byId("goal-progress")};
+function renderGoal() {
+  goalView.box.hidden = state.prestiges>0 || state.arms>0 || state.rolls>=35 || state.earned>=VIP_TARGET;
+  if (goalView.box.hidden) return;
+  let key = "arms", reason = "アームが一定間隔でダイスを1個振ります。";
+  if (state.dice<2) {
+    key = "dice";
+    reason = "ダイスが2個になると、同じ出目で共鳴できます。";
+  } else if (!state.wave) {
+    key = "wave";
+    reason = "近くのダイスをまとめて振り、共鳴を狙えます。";
+  }
+  const item = upgrades.find(upgrade=>upgrade.key===key);
+  const cost = Math.ceil(item.cost(state));
+  goalView.label.textContent = "次の目標 · "+item.title;
+  goalView.value.textContent = state.coins>=cost ? "購入可能" : format(state.coins)+" / "+format(cost);
+  goalView.reason.textContent = reason;
+  goalView.progress.max = cost;
+  goalView.progress.value = state.coins;
+}
+function materialOffer() {
+  const from = Math.min(...state.dieMaterials);
+  const to = from+1;
+  return {from,to,index:state.dieMaterials.indexOf(from),capped:from===caps.material,
+    locked:state.prestiges<from,price:[85,650,4200][from]};
+}
+function upgradeOffer(item) {
+  if (item.key==="material") return materialOffer();
+  return {capped:state[item.key]>=caps[item.key],locked:item.key==="speed" && !state.arms,
+    price:Math.ceil(item.cost(state))};
+}
+function renderMaterials() {
+  const counts = materials.map(()=>0);
+  for (const rank of state.dieMaterials) counts[rank]++;
+  Array.from(byId("materials").children).forEach((badge,index)=>{
+    badge.classList.toggle("current",counts[index]>0);
+    const text = counts[index]+"個";
+    if (badge.lastElementChild.textContent!==text) badge.lastElementChild.textContent = text;
+  });
+  const offer = materialOffer();
+  const rule = byId("material-rule");
+  if (offer.capped) {
+    rule.textContent = "全ダイスが最高材質です。";
+    return;
+  }
+  const nextTier = offer.locked ? offer.to : offer.to+1;
+  rule.textContent = nextTier<=caps.material ?
+    materials[nextTier].name+"の解放条件は、全ダイスを"+materials[nextTier-1].name+
+      "以上にしてVIP転生を"+(nextTier-1)+"回行うことです。" :
+    "1回の購入でダイス1個がネオンレーザーになります。";
+}
 function renderUI() {
   renderFever();
+  if (!byId("shop").hidden) renderGoal();
   if (!byId("vip").hidden || vipDialog.open) renderVIP();
   byId("coins").textContent = short(state.coins);
   byId("coins").title = format(state.coins);
   byId("dice-count").firstChild.nodeValue = state.dice+" ";
   byId("arm-count").textContent = state.arms;
   byId("play-hint").classList.toggle("wave-unlocked",state.wave>0);
-  byId("tier-multiplier").textContent = "×"+materials[state.material].multiplier;
+  renderMaterials();
   for (const item of upgrades) {
     const view = upgradeViews.get(item.key);
-    const capped = state[item.key] >= caps[item.key];
-    const locked = item.key === "speed" && !state.arms;
-    const price = Math.ceil(item.cost(state));
-    view.detail.textContent = item.detail(state);
+    const offer = upgradeOffer(item);
+    const {capped,locked,price} = offer;
+    view.detail.textContent = item.key!=="material" ? item.detail(state) : capped ? "全ダイスが最高材質" :
+      locked ? "VIP転生 "+offer.from+" 回で"+materials[offer.to].name+"を解放" :
+      "ダイス #"+(offer.index+1)+" を"+materials[offer.to].name+" ×"+materials[offer.to].multiplier+"へ";
     view.button.disabled = capped || locked || state.coins < price;
     const action = typeof item.action === "function" ? item.action(state) : item.action;
     view.label.textContent = capped ? "最大" : locked ? "未解放" : action;
@@ -354,11 +427,6 @@ function renderUI() {
     view.button.setAttribute("aria-label",item.title+" "+view.label.textContent+
       (view.price.hidden ? "" : " "+format(price)+" コイン"));
   }
-  Array.from(byId("materials").children).forEach((badge,index)=>{
-    badge.classList.toggle("current",index === state.material);
-    if (index === state.material) badge.setAttribute("aria-current","true");
-    else badge.removeAttribute("aria-current");
-  });
   if (!byId("stats").hidden) {
     const mins = Math.floor(state.seconds/60), secs = Math.floor(state.seconds%60);
     const values = [format(state.earned),format(state.rolls),format(state.resonances),format(state.best),
@@ -369,15 +437,21 @@ function renderUI() {
 }
 function buy(item) {
   const key = item.key;
-  const price = Math.ceil(item.cost(state));
-  if (state[key] >= caps[key] || state.coins < price || !Number.isFinite(price) || (key === "speed" && !state.arms)) return;
+  const offer = upgradeOffer(item);
+  if (offer.capped || offer.locked || state.coins<offer.price || !Number.isFinite(offer.price)) return;
   unlockAudio();
-  state.coins -= price;
-  state[key]++;
+  state.coins -= offer.price;
+  if (key === "material") {
+    state.dieMaterials[offer.index] = offer.to;
+    markedDie = dice[offer.index];
+    markedUntil = time+1.3;
+    announce("ダイス #"+(offer.index+1)+" が"+materials[offer.to].name+"に進化");
+  } else {
+    state[key]++;
+  }
   if (key === "dice") spawnDie();
   if (key === "arms") spawnArm();
   if (key === "speed") arms.forEach(arm=>{arm.next = Math.min(arm.next,time+armInterval());});
-  if (key === "material") announce(materials[state.material].name+"に進化  ×"+materials[state.material].multiplier);
   if (key === "arms" && state.arms === 1) announce("ロボットアームが稼働を開始");
   sound("buy");
   save();
@@ -454,7 +528,8 @@ function tone(freq,end,length,volume,type,delay = 0) {
 function sound(type,combo = 1) {
   if (state.muted || !audio || audio.state !== "running") return;
   const now = audio.currentTime;
-  if (now-(lastSound[type] ?? -10) < (type === "crit" ? .04 : .075)) return;
+  if (now-(lastSound[type] ?? -10) < (type === "crit" ? .18 : .075)) return;
+  if ((type==="coin" || type==="crit") && now-(lastSound.fever ?? -10)<.36) return;
   lastSound[type] = now;
   if (type === "hit") tone(random(210,330),92,.046,.037,"triangle");
   if (type === "land") tone(random(170,230),72,.058,.045,"triangle");
@@ -464,13 +539,14 @@ function sound(type,combo = 1) {
     tone(1050,1160,.092,.024,"sine",.036);
   }
   if (type === "crit") {
-    const pitch = 355*2**(Math.min(combo,12)/12);
-    tone(pitch,pitch,.14,.046,"triangle");
-    tone(pitch*1.5,pitch*1.5,.19,.042,"sine",.041);
-    tone(pitch*2,pitch*2,.21,.038,"sine",.086);
+    const pitch = 392*2**(Math.min(combo-1,8)/18);
+    tone(pitch,pitch,.13,.036,"triangle");
+    tone(pitch*1.5,pitch*1.5,.17,.032,"sine",.045);
+    if (combo>=4) tone(pitch*2,pitch*2,.19,.025,"sine",.09);
   }
   if (type === "fever") {
-    [523,659,784,1047].forEach((pitch,index)=>tone(pitch,pitch,.23,.04,"triangle",index*.055));
+    [523,659,784,1047].forEach((pitch,index)=>tone(pitch,pitch,index===3 ? .34 : .18,.038,"triangle",index*.065));
+    tone(523,523,.29,.022,"sine",.195);
   }
 }
 function updateSound() {
@@ -548,6 +624,8 @@ function restAngles(face) {
   return [[0,0],[Math.PI/2,0],[0,-Math.PI/2],[0,Math.PI/2],[-Math.PI/2,0],[Math.PI,0]][face-1];
 }
 function spawnDie() {
+  const slot = dice.length;
+  state.dieMaterials[slot] ??= state.materialBase;
   const starts = [[.28,.42],[.65,.33],[.6,.68]];
   const start = state.dice===1 ? [.5,.38] : starts[dice.length];
   const face = start ? [3,5,2][dice.length] : 1+Math.floor(Math.random()*6);
@@ -560,7 +638,7 @@ function spawnDie() {
       y = board.y+board.h*random(.1,.9);
     }
   }
-  const die = {x,y,z:0,vx:0,vy:0,vz:0,rx,ry,rz:start ? [-.34,.25,-.15][dice.length] : random(-Math.PI,Math.PI),
+  const die = {slot,x,y,z:0,vx:0,vy:0,vz:0,rx,ry,rz:start ? [-.34,.25,-.15][dice.length] : random(-Math.PI,Math.PI),
     sx:0,sy:0,sz:0,face,nextFace:face,rolling:false,bounces:0,launched:-Infinity};
   dice.push(die);
   confine(die,false);
@@ -570,8 +648,10 @@ function spawnArm() {
 }
 function resetTable() {
   dice = []; arms = []; waves = []; beams = []; popups = []; particles = [];
+  markedDie = null;
+  state.dieMaterials.length = state.dice;
   recent = Array.from({length:7},()=>[]);
-  streak = 0; lastCrit = -Infinity; shake = 0;
+  streak = 0; lastCrit = -Infinity; shakeStart = -Infinity; shakeAmplitude = 0;
   for (let i=0;i<state.dice;i++) spawnDie();
   for (let i=0;i<state.arms;i++) spawnArm();
 }
@@ -597,20 +677,20 @@ function launch(die, x, y, strength, manual) {
   die.sy = random(6,13)*(Math.random()<.5 ? -1 : 1);
   die.sz = random(-7,7);
   die.nextFace = 1+Math.floor(Math.random()*6);
+  die.manualBatch = null;
   die.launched = time;
   die.rolling = true;
   die.bounces = 0;
   if (manual) sound("hit");
   return true;
 }
-function addWave(x,y,source = null) {
-  const manual = source!==null;
-  const range = manual ? .10+.025*(state.wave-1) : .65;
-  waves.push({x,y,range,t:0,life:manual ? .34 : .38,
-    strength:manual ? 1+.062*state.wave : 1,manual,hit:new Set(source ? [source] : []),
-    chainSeeds:!manual && state.talents.chain ? [] : null});
+function addWave(x,y,source) {
+  const batch = Symbol();
+  source.manualBatch = batch;
+  waves.push({x,y,range:waveRange(state.wave),t:0,life:.34,
+    strength:1+.062*state.wave,batch,hit:new Set([source])});
   if (waves.length > 24) waves.shift();
-  if (manual) sound("wave");
+  sound("wave");
 }
 function waveRadius(wave) {
   const t = clamp(wave.t/wave.life,0,1);
@@ -626,6 +706,11 @@ function spark(x,y,palette,count) {
       color:palette[i%palette.length],size:random(1.3,3)*unit});
   }
 }
+function requestShake(linked,combo) {
+  if (reducedMotion.matches || time-shakeStart<SHAKE_COOLDOWN) return;
+  shakeStart = time;
+  shakeAmplitude = Math.min(2.5,(1.5+.17*Math.min(4,linked)+.12*Math.min(5,combo-1))*unit);
+}
 function settle(die) {
   die.z = 0;
   die.rolling = false;
@@ -633,7 +718,7 @@ function settle(die) {
   [die.rx,die.ry] = restAngles(die.face);
   die.rz %= Math.PI*2;
   state.rolls++;
-  const base = rollValue(die.face);
+  const base = rollValue(die.face,state.dieMaterials[die.slot]);
   const candidates = recent[die.face];
   while (candidates.length && time-candidates[0].t > RESONANCE_WINDOW) candidates.shift();
   let bonus = 0;
@@ -643,16 +728,18 @@ function settle(die) {
     lastCrit = time;
     state.resonances++;
     state.best = Math.max(state.best,streak);
-    bonus = Math.round(base*(1+Math.min(2,Math.floor(streak/4)))*(1+.25*state.talents.resonance));
+    const sameWave = !!die.manualBatch && candidates.some(other=>other.die!==die && other.batch===die.manualBatch);
+    const resonanceRate = .60+.20*Math.min(4,linked.length)+.12*Math.min(5,streak-1)+(sameWave ? .35 : 0);
+    bonus = Math.round(base*resonanceRate*(1+.25*state.talents.resonance));
     for (const other of linked.slice(-4)) beams.push({a:other,b:die,life:.49,phase:random(0,6)});
-    shake = Math.max(shake,Math.min(6,2+streak*.4)*unit);
+    requestShake(linked.length,streak);
+    chargeFever(linked.length,streak,sameWave);
     sound("crit",streak);
-    spark(die.x,die.y,["#c5ffdd","#fcf2b4","#77f8c7"],12);
-    chargeFever(linked.length,streak);
+    spark(die.x,die.y,["#c5ffdd","#fcf2b4","#77f8c7"],7+Math.min(4,linked.length));
   } else {
     spark(die.x,die.y,["#cbb074","#fff1ad"],4);
   }
-  candidates.push({die,t:time});
+  candidates.push({die,t:time,batch:die.manualBatch});
   const multiplier = feverMultiplier();
   const amount = (base+bonus)*multiplier;
   credit(amount);
@@ -736,38 +823,48 @@ function tickArm(arm,dt) {
     const settled = dice.filter(die=>!die.rolling);
     const targets = settled.length ? settled : dice;
     const target = targets[Math.floor(Math.random()*targets.length)];
-    arm.sweep = {elapsed:0,x:target.x,y:target.y,fired:false};
+    arm.sweep = {elapsed:0,x:target.x,y:target.y,target,fired:false};
     arm.next = time+armInterval();
   }
   if (arm.sweep && !arm.sweep.fired && arm.sweep.elapsed >= .24) {
-    arm.sweep.fired = true;
-    addWave(arm.sweep.x,arm.sweep.y);
-    spark(arm.sweep.x,arm.sweep.y,["#8cfacf","#d5ffcd"],7);
-    sound("hit");
-  }
-}
-function cascadeArm(wave) {
-  const rank = state.talents.chain;
-  const reach = Math.min(board.w,board.h)*(.13+.025*rank);
-  let remaining = rank*2;
-  let sources = wave.chainSeeds;
-  for (let depth=0;depth<rank && remaining>0 && sources.length;depth++) {
-    const next = [];
-    for (const from of sources) {
-      let target, nearest = reach;
+    const sweep = arm.sweep;
+    sweep.fired = true;
+    let target = sweep.target;
+    if (target.rolling) {
+      let nearest = Infinity;
       for (const die of dice) {
-        if (die.rolling || wave.hit.has(die)) continue;
-        const distance = Math.hypot(die.x-from.x,die.y-from.y);
-        if (distance>nearest) continue;
+        if (die.rolling) continue;
+        const distance = Math.hypot(die.x-sweep.x,die.y-sweep.y);
+        if (distance>=nearest) continue;
         target = die;
         nearest = distance;
       }
-      if (!target || !launch(target,from.x,from.y,.9,false)) continue;
-      wave.hit.add(target);
-      next.push(target);
-      beams.push({a:from,b:target,life:.49,phase:random(0,6),arm:true});
-      sound("hit");
-      if (--remaining===0) break;
+    }
+    if (!launch(target,sweep.x-unit,sweep.y,1,false)) return;
+    spark(target.x,target.y,["#8cfacf","#d5ffcd"],7);
+    sound("hit");
+    if (state.talents.chain) cascadeArm(target);
+  }
+}
+function cascadeArm(source) {
+  const rank = state.talents.chain;
+  const reach = Math.min(board.w,board.h)*chainRange(rank,state.speed);
+  let remaining = rank*2;
+  let sources = [source];
+  for (let depth=0;depth<rank && remaining>0 && sources.length;depth++) {
+    const next = [];
+    for (const from of sources) {
+      const nearby = dice.filter(die=>!die.rolling)
+        .map(die=>({die,distance:Math.hypot(die.x-from.x,die.y-from.y)}))
+        .filter(item=>item.distance<=reach)
+        .sort((a,b)=>a.distance-b.distance);
+      for (const {die} of nearby.slice(0,Math.min(2,remaining))) {
+        if (!launch(die,from.x,from.y,.9,false)) continue;
+        next.push(die);
+        beams.push({a:from,b:die,life:.49,phase:random(0,6),arm:true});
+        remaining--;
+      }
+      if (!remaining) break;
     }
     sources = next;
   }
@@ -783,10 +880,11 @@ function step(dt) {
     for (const die of dice) {
       if (!wave.hit.has(die) && Math.hypot(die.x-wave.x,die.y-wave.y)<=radius) {
         wave.hit.add(die);
-        if (launch(die,wave.x,wave.y,wave.strength,wave.manual)) wave.chainSeeds?.push(die);
+        if (launch(die,wave.x,wave.y,wave.strength,true)) {
+          die.manualBatch = wave.batch;
+        }
       }
     }
-    if (wave.t>=wave.life && wave.chainSeeds?.length) cascadeArm(wave);
   }
   waves = waves.filter(w=>w.t<w.life);
   for (const die of dice) tickDie(die,dt);
@@ -803,7 +901,6 @@ function step(dt) {
     for (const effect of list) if (list!==particles) effect.life -= dt;
     while (list[0]?.life<=0) list.shift();
   }
-  shake *= Math.exp(-dt*13);
 }
 function rounded(g,x,y,w,h,r) {
   g.beginPath();
@@ -1006,7 +1103,9 @@ function projectDie(die) {
   });
   return {size,points};
 }
-function drawDie(die,material) {
+function drawDie(die) {
+  const rank = state.dieMaterials[die.slot];
+  const material = materials[rank];
   const {size,points} = projectDie(die);
   for (const [value,a,b,c,d] of faces) {
     const p=points[a], q=points[b], r=points[c], s=points[d];
@@ -1020,7 +1119,7 @@ function drawDie(die,material) {
     ctx.lineWidth = .86*unit;
     ctx.strokeStyle = material.edge;
     ctx.stroke();
-    if (state.material===0 && bright) {
+    if (rank===0 && bright) {
       ctx.save();
       ctx.clip();
       ctx.strokeStyle="#864d242a";
@@ -1171,8 +1270,11 @@ function drawPopup(popup) {
   ctx.globalAlpha=1;
 }
 function tableShake() {
-  if (shake<=.13 || reducedMotion.matches) return {x:0,y:0};
-  return {x:Math.sin(time*115)*shake,y:Math.cos(time*127)*shake*.7};
+  const elapsed = time-shakeStart;
+  if (elapsed>=SHAKE_DURATION || reducedMotion.matches) return {x:0,y:0};
+  const envelope = ease(clamp(elapsed/.03,0,1))*(1-elapsed/SHAKE_DURATION)**2;
+  const amplitude = shakeAmplitude*envelope;
+  return {x:Math.sin(elapsed*62)*amplitude,y:Math.sin(elapsed*48)*amplitude*.55};
 }
 function draw() {
   ctx.clearRect(0,0,width,height);
@@ -1182,8 +1284,9 @@ function draw() {
   ctx.drawImage(backdrop,0,0,width,height);
   if (state.feverLeft>0) {
     const {outer:o,rail} = board;
+    const intro = reducedMotion.matches ? 0 : clamp((state.feverLeft-FEVER_DURATION+.45)/.45,0,1);
     rounded(ctx,o.x+2*unit,o.y+2*unit,Math.max(1,o.w-4*unit),Math.max(1,o.h-4*unit),rail*1.7);
-    ctx.strokeStyle="#ffcc788c";
+    ctx.strokeStyle="rgba(255,204,120,"+(.55+.35*intro)+")";
     ctx.lineWidth=2.4*unit;
     ctx.stroke();
   }
@@ -1194,7 +1297,7 @@ function draw() {
     ctx.fillStyle=feverGlow;
     ctx.fillRect(board.x,board.y,board.w,board.h);
   }
-  for (const wave of waves) if (wave.manual) drawWave(wave);
+  for (const wave of waves) drawWave(wave);
   for (const die of dice) {
     const lift=die.z/unit, size=(16+lift*.09)*unit;
     ctx.beginPath();
@@ -1206,7 +1309,23 @@ function draw() {
   for (const beam of beams) if (beam.life>0) drawBeam(beam);
   arms.forEach(drawArm);
   const ordered = [...dice].sort((a,b)=>paintDepth(a)-paintDepth(b));
-  for (const die of ordered) drawDie(die,materials[state.material]);
+  for (const die of ordered) drawDie(die);
+  if (markedDie && time<markedUntil) {
+    const die = markedDie;
+    const y = die.y-die.z*.51;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1,(markedUntil-time)*3);
+    ctx.strokeStyle = "#ffe19b";
+    ctx.lineWidth = 1.5*unit;
+    ctx.beginPath();
+    ctx.ellipse(die.x-die.z*.10,y-4*unit,22*unit,20*unit,0,0,Math.PI*2);
+    ctx.stroke();
+    ctx.fillStyle = "#ffe19b";
+    ctx.textAlign = "center";
+    ctx.font = "700 "+Math.max(10,12*unit)+"px 'Segoe UI',sans-serif";
+    ctx.fillText("#"+(die.slot+1),die.x-die.z*.10,y-26*unit);
+    ctx.restore();
+  }
   for (const p of particles) if (p.life>0) {
     ctx.globalAlpha=clamp(p.life/p.total,0,1);
     diamond(ctx,p.x,p.y,p.size,p.color);

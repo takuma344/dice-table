@@ -74,6 +74,11 @@ kbd{color:#f0dcba;background:#304136;border:1px solid #56604d;border-radius:4px;
 .panel-heading{margin-bottom:16px}
 .panel-heading h2{font-size:25px;line-height:1.25;letter-spacing:.035em}
 .panel-heading p{margin-top:6px;font-size:12px;color:var(--muted)}
+.shop-goal{margin-top:8px;color:#315443}
+.shop-goal>div{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11px}
+.shop-goal span{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.shop-goal progress{display:block;width:100%;height:6px;margin-top:4px;accent-color:#377455}
+.shop-goal p{margin-top:3px;font-size:11px}
 .upgrades{display:grid;gap:8px}
 .upgrade{min-width:0;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:9px 10px;background:var(--cream);border:1px solid var(--line);border-radius:9px}
 .upgrade-icon{width:39px;height:39px;display:grid;place-items:center;background:#e3ebe1;color:#285640;border-radius:7px}
@@ -93,7 +98,9 @@ kbd{color:#f0dcba;background:#304136;border:1px solid #56604d;border-radius:4px;
 .tier-heading strong{color:#285943;font-variant-numeric:tabular-nums}
 .materials{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:9px}
 .material{display:flex;align-items:center;justify-content:center;gap:3px;min-height:28px;border-radius:5px;border:1px solid transparent;color:#6b6557;font-size:10px;white-space:nowrap}
-.material svg{width:13px;height:13px}
+.material-swatch{width:9px;height:9px;flex:none;border:1px solid #7c654b;border-radius:2px;background:var(--die-color)}
+.material strong{font-variant-numeric:tabular-nums}
+.material-rule{margin-top:7px;color:var(--muted);font-size:11px;line-height:1.4}
 .material.current{border-color:#bfa67d;background:#efe3cb;color:#5d421f;font-weight:750}
 .panel-footer{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px clamp(18px,2.4vw,35px);margin-top:auto;border-top:1px solid var(--line);font-size:10px;color:var(--muted)}
 .panel-footer button{min-height:44px;gap:5px;padding:0 3px;border:0;color:#6d4b3e;background:none;font-size:11px}

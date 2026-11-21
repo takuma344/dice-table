@@ -73,11 +73,19 @@
         <button id="stats-tab" role="tab" aria-selected="false" aria-controls="stats" data-tab="stats" tabindex="-1"><svg><use href="#i-chart"/></svg>統計</button>
       </div>
       <section id="shop" class="panel-content" role="tabpanel" aria-labelledby="shop-tab">
-        <div class="panel-heading"><h2>テーブル強化</h2><p>ダイスを増やし、アームにロールを任せよう。</p></div>
+        <div class="panel-heading">
+          <h2>テーブル強化</h2>
+          <div class="shop-goal" id="shop-goal">
+            <div><strong id="goal-label">次の目標</strong><span id="goal-value"></span></div>
+            <progress id="goal-progress" aria-labelledby="goal-label" max="1" value="0"></progress>
+            <p id="goal-reason"></p>
+          </div>
+        </div>
         <div id="upgrades" class="upgrades"></div>
         <div class="tier">
-          <div class="tier-heading"><span>マテリアル進化</span><strong id="tier-multiplier">×1</strong></div>
+          <div class="tier-heading"><span>ダイスの材質内訳</span></div>
           <div id="materials" class="materials" aria-label="ダイスの材質"></div>
+          <p id="material-rule" class="material-rule"></p>
         </div>
       </section>
       <section id="vip" class="panel-content" role="tabpanel" aria-labelledby="vip-tab" hidden>
@@ -102,7 +110,7 @@
         </section>
       </section>
       <section id="stats" class="panel-content" role="tabpanel" aria-labelledby="stats-tab" hidden>
-        <div class="panel-heading"><h2>プレイ統計</h2><p>0.8 秒以内に同じ目が着地すると共鳴が発生します。</p></div>
+        <div class="panel-heading"><h2>プレイ統計</h2><p>基礎配当は出目 × 材質倍率。0.8 秒以内に同じ目が着地すると共鳴ボーナスが加わります。</p></div>
         <dl id="records" class="records"></dl>
       </section>
       <footer class="panel-footer">
@@ -122,7 +130,8 @@
     <form method="dialog">
       <h2 id="vip-title">VIPテーブル転生</h2>
       <p id="vip-confirm-text"></p>
-      <p>所持コイン、ダイス、材質、アーム、衝撃波、フィーバーをリセットします。VIPチップ、恒久タレント、スキンと累計記録は引き継ぎます。</p>
+      <p>所持コイン、ダイス数、アーム、衝撃波、フィーバーをリセットします。全ダイスが到達した材質は、次の周回の初期材質になります。</p>
+      <p>VIPチップ、恒久タレント、スキンと累計記録を引き継ぎます。</p>
       <div><button value="cancel" autofocus>キャンセル</button><button value="rebirth" class="vip-confirm">転生する</button></div>
     </form>
   </dialog>
