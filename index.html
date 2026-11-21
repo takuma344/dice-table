@@ -59,6 +59,7 @@
       <div class="playfield">
         <canvas id="table" tabindex="0" role="button" aria-label="ダイスを振る" aria-describedby="play-hint">ダイスを振るには Canvas 対応ブラウザが必要です。</canvas>
         <div id="notice" class="notice" role="status"></div>
+        <div id="achievement-notice" class="notice achievement-notice" role="status"></div>
       </div>
       <div class="stage-bottom">
         <p id="play-hint"><svg><use href="#i-hand"/></svg><span class="direct-hint mouse-hint">ダイスをクリックして振る</span><span class="direct-hint touch-hint">ダイスをタップして振る</span><span class="wave-hint mouse-hint">ダイスをクリック・ドラッグして衝撃波を起こす</span><span class="wave-hint touch-hint">ダイスをタップ・スワイプして衝撃波を起こす</span></p>
@@ -66,10 +67,11 @@
       </div>
     </section>
 
-    <aside class="panel" aria-label="アップグレード、VIP、統計">
+    <aside class="panel" aria-label="アップグレード、VIP、図鑑・実績、統計">
       <div class="tabs" role="tablist" aria-label="パネル">
         <button id="shop-tab" role="tab" aria-selected="true" aria-controls="shop" data-tab="shop"><svg><use href="#i-speed"/></svg>アップグレード<span id="merge-tab-count" class="merge-count" hidden></span></button>
         <button id="vip-tab" role="tab" aria-selected="false" aria-controls="vip" data-tab="vip" tabindex="-1"><svg><use href="#i-gem"/></svg>VIP</button>
+        <button id="collection-tab" role="tab" aria-selected="false" aria-controls="collection" data-tab="collection" tabindex="-1">図鑑</button>
         <button id="stats-tab" role="tab" aria-selected="false" aria-controls="stats" data-tab="stats" tabindex="-1"><svg><use href="#i-chart"/></svg>統計</button>
       </div>
       <section id="shop" class="panel-content" role="tabpanel" aria-labelledby="shop-tab">
@@ -126,6 +128,22 @@
           <div id="vip-talents"></div>
         </section>
       </section>
+      <section id="collection" class="panel-content" role="tabpanel" aria-labelledby="collection-tab" hidden>
+        <div class="panel-heading"><h2>図鑑と実績</h2><p>収集記録と実績報酬はVIP転生後も引き継がれます。</p></div>
+        <div class="vip-summary">
+          <button class="journal-link" data-journal-jump="collection-title"><span>コレクション</span><strong id="collection-count"></strong></button>
+          <button class="journal-link" data-journal-jump="milestones-title"><span>達成済みの実績</span><strong id="achievement-count"></strong></button>
+        </div>
+        <section class="vip-group" aria-labelledby="milestones-title">
+          <h3 id="milestones-title" tabindex="-1">実績と恒久報酬</h3>
+          <p id="achievement-bonus" class="material-rule"></p>
+          <div id="milestone-list" class="milestone-list"></div>
+        </section>
+        <section class="vip-group" aria-labelledby="collection-title">
+          <h3 id="collection-title" tabindex="-1">コレクション</h3>
+          <div id="collection-list"></div>
+        </section>
+      </section>
       <section id="stats" class="panel-content" role="tabpanel" aria-labelledby="stats-tab" hidden>
         <div class="panel-heading"><h2>プレイ統計</h2><p>基礎配当は出目 × 材質倍率。0.8 秒以内に同じ目が着地すると共鳴ボーナスが加わります。</p></div>
         <dl id="records" class="records"></dl>
@@ -139,7 +157,7 @@
   <dialog id="reset-dialog" aria-labelledby="reset-title">
     <form method="dialog">
       <h2 id="reset-title">セーブをリセット</h2>
-      <p>コイン、強化、プレイ記録、VIPチップと恒久タレントを初期状態に戻します。</p>
+      <p>コイン、強化、プレイ記録、図鑑・実績、VIPチップと恒久タレントを初期状態に戻します。</p>
       <div><button value="cancel" autofocus>キャンセル</button><button value="reset" class="danger">リセットする</button></div>
     </form>
   </dialog>
