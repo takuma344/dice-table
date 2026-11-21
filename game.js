@@ -92,12 +92,12 @@ const upgrades = [
     cost:s=>dicePurchasePrice(dicePriceBasis(s)),
     detail:s=>s.dice+" / "+caps.dice+" 個 · 価格基準 "+dicePriceBasis(s)+" 個分"},
   {key:"material", icon:"gem", title:"ダイスの材質", action:"1個進化"},
-  {key:"arms", icon:"arm", title:"ロボットアーム", action:"雇用", cost:s=>95*2.48**s.arms,
+  {key:"arms", icon:"arm", title:"ロボットアーム", action:"雇用", cost:s=>75*2.48**s.arms,
     detail:s=>s.arms+" / 6 基 · "+(s.talents.armWave ? "主投擲で衝撃波" : s.talents.chain ? "1個を投擲し、近くへ連鎖" : "1作動につきダイス1個")},
   {key:"speed", icon:"speed", title:"アーム速度", action:"強化", cost:s=>125*1.72**s.speed,
     detail:s=>s.arms ? "Lv. "+s.speed+" · "+armInterval().toFixed(1)+" 秒ごとに作動" : "ロボットアームを雇うと解放"},
   {key:"wave", icon:"wave", title:"テーブル衝撃波", action:s=>s.wave ? "強化" : "解放",
-    cost:s=>s.wave<2 ? [26,55][s.wave] : 95*1.68**(s.wave-2),
+    cost:s=>s.wave<2 ? [22,55][s.wave] : 95*1.68**(s.wave-2),
     detail:s=>s.wave ? "Lv. "+s.wave+" · 手動で短辺の "+(waveRange(s.wave)*100).toFixed(1).replace(/\.0$/,"")+"% まで巻き込む" :
       "Lv. 0 · 近くのダイスも一緒に振れる"},
 ];
@@ -106,7 +106,11 @@ const RESONANCE_WINDOW = .8;
 const FEVER_DURATION = 10;
 const SHAKE_COOLDOWN = .85;
 const SHAKE_DURATION = .24;
+const SLAM_COOLDOWN = 2.5;
+const SLAM_RANGE = .30;
+const HOLD_DURATION = 14;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const coarsePointer = matchMedia("(pointer:coarse)");
 const number = new Intl.NumberFormat("ja-JP");
 const compact = new Intl.NumberFormat("ja-JP",{notation:"compact",maximumFractionDigits:1});
 const format = value => number.format(Math.floor(value));
@@ -126,7 +130,7 @@ function dicePriceBasis(progress) {
   return progress.dieStars.reduce((count,stars)=>count+2**(stars-1),0);
 }
 function dicePurchasePrice(basis) {
-  if (basis<5) return [14,22,34,48][basis-1];
+  if (basis<5) return [9,17,30,46][basis-1];
   const early = Math.min(basis,36);
   const middle = clamp(basis-36,0,20);
   const late = Math.max(0,basis-56);
@@ -221,6 +225,9 @@ let streak = 0, lastCrit = -Infinity, shakeStart = -Infinity, shakeAmplitude = 0
 let markedDie = null, markedUntil = 0;
 let fusions = [];
 let burstUntil = 0, burstPayout = 0;
+let held = null, holdMode = false, slamReady = 0, impactTime = -Infinity, hitStop = 0;
+let throwStatus = "", throwStatusUntil = 0;
+let pointer = null;
 let uiDirty = true;
 let noticeTimer;
 let achievementTimer, cachedAchievements, cachedAchievementCount, cachedBonus;
@@ -329,7 +336,7 @@ function trackMastery(scanDice = true) {
     "オーロラブラック解放  ＋"+chips+" VIPチップ" : "ネオンマスタリー達成  ＋"+chips+" VIPチップ");
 }
 function chargeFever(linked,combo,sameWave = false) {
-  const charge = 5+3*Math.min(4,linked-1)+Math.min(5,combo-1)+(sameWave ? 3 : 0);
+  const charge = (earlyPlay() ? 8 : 5)+3*Math.min(4,linked-1)+Math.min(5,combo-1)+(sameWave ? 3 : 0);
   gainFever(Math.round(charge*(1+.2*state.talents.fever)));
 }
 function gainFever(charge) {
@@ -527,6 +534,8 @@ function mergeDice(key) {
   const pair = dice.filter(die=>mergeKey(die)===key).slice(0,2);
   if (pair.length!==2 || state.dieStars[pair[0].slot]>=MAX_STARS) return;
   const [first,second] = pair;
+  if (held && pair.includes(held.die)) held = null;
+  if (pointer?.target && pair.includes(pointer.target)) pointer = null;
   unlockAudio();
   const inputs = pair.map(die=>({die:{...die},rank:state.dieMaterials[die.slot],
     type:state.dieSpecials[die.slot],stars:state.dieStars[die.slot]}));
@@ -832,7 +841,7 @@ function renderGoal() {
     reason = "ダイスが2個になると、同じ出目で共鳴できます。";
   } else if (!state.wave) {
     key = "wave";
-    reason = "近くのダイスをまとめて振り、共鳴を狙えます。";
+    reason = "スラムは今すぐ使えます。衝撃波を解放すると投擲でも周囲を巻き込みます。";
   }
   const item = upgrades.find(upgrade=>upgrade.key===key);
   const cost = Math.ceil(item.cost(state));
@@ -900,7 +909,7 @@ function renderUI() {
   byId("coins").title = format(state.coins);
   byId("dice-count").firstChild.nodeValue = state.dice+" ";
   byId("arm-count").textContent = state.arms;
-  byId("play-hint").classList.toggle("wave-unlocked",state.wave>0);
+  renderThrowControls();
   renderMaterials();
   for (const item of upgrades) {
     const view = upgradeViews.get(item.key);
@@ -943,7 +952,12 @@ function buy(item) {
   } else {
     state[key]++;
   }
-  if (key === "dice") spawnDie();
+  if (key === "dice") {
+    spawnDie();
+    if (state.dice===2 && state.prestiges===0 && state.rolls<=12) {
+      showThrowStatus("ホールドとスラムで大共鳴を狙えます");
+    }
+  }
   if (key === "dice" || key === "material") {
     recordCollection();
     awardMilestones();
@@ -1035,6 +1049,14 @@ function sound(type,combo = 1) {
   if (type === "hit") tone(random(210,330),92,.046,.037,"triangle");
   if (type === "land") tone(random(170,230),72,.058,.045,"triangle");
   if (type === "wave") tone(165,54,.15,.049,"sine");
+  if (type === "impact" || type === "slam") {
+    tone(type==="slam" ? 162 : 238,57,.145,.055,"triangle");
+    tone(320,113,.076,.031,"sine",.012);
+  }
+  if (type === "grand") {
+    tone(440,554,.16,.038,"triangle");
+    tone(830,1047,.26,.040,"sine",.071);
+  }
   if (type === "blast") tone(224,60,.16,.045,"triangle");
   if (type === "achievement") {
     tone(587,587,.13,.027,"triangle");
@@ -1136,7 +1158,10 @@ function resize() {
     }
     for (const arm of arms) if (arm.sweep) move(arm.sweep);
     for (const point of [...waves,...particles,...popups]) move(point);
-    if (pointer) move(pointer);
+    if (pointer) {
+      move(pointer.start);
+      move(pointer.last);
+    }
   }
   reflowPopups();
   paintTable();
@@ -1155,6 +1180,14 @@ function spawnDie() {
   const [rx,ry] = restAngles(face);
   let x = board.x+board.w*(start ? start[0] : random(.13,.87));
   let y = board.y+board.h*(start ? start[1] : random(.13,.87));
+  if (slot===1 && state.dice===2) {
+    const first = dice[0];
+    const dx = board.x+board.w*.5-first.x, dy = board.y+board.h*.5-first.y;
+    const angle = Math.hypot(dx,dy)>unit ? Math.atan2(dy,dx) : -.4;
+    const gap = Math.min(board.w,board.h)*.15;
+    x = first.x+Math.cos(angle)*gap;
+    y = first.y+Math.sin(angle)*gap;
+  }
   if (!start) {
     let clearance = -Infinity;
     for (let sample=0;sample<14;sample++) {
@@ -1181,6 +1214,8 @@ function resetTable() {
   fusions = [];
   burstUntil = 0;
   burstPayout = 0;
+  held = null; holdMode = false; slamReady = time; impactTime = -Infinity; hitStop = 0; pointer = null;
+  throwStatusUntil = time;
   state.dieMaterials.length = state.dice;
   state.dieSpecials.length = state.dice;
   state.dieStars.length = state.dice;
@@ -1190,6 +1225,8 @@ function resetTable() {
   for (let i=0;i<state.arms;i++) spawnArm();
 }
 function isFusing(die) {return fusions.some(fusion=>fusion.die===die && !fusion.impacted);}
+function isHeld(die) {return held?.die===die;}
+function earlyPlay() {return state.prestiges===0 && state.rolls<=45;}
 function confine(die,rebound = true) {
   const padding = unit*17*starStats(die).size;
   const rx = Math.min(padding,board.w*.5), ry = Math.min(padding,board.h*.5);
@@ -1199,31 +1236,49 @@ function confine(die,rebound = true) {
   const hitY = rebound && (die.y-y)*die.vy>0;
   if (hitX) die.vx *= -.66;
   if (hitY) die.vy *= -.66;
-  if ((hitX || hitY) && Math.hypot(die.vx,die.vy)>30*unit) sound("hit");
+  if ((hitX || hitY) && Math.hypot(die.vx,die.vy)>30*unit) {
+    sound("hit");
+    hardImpact(die);
+  }
   die.x = x;
   die.y = y;
 }
-function launch(die, x, y, strength, manual) {
-  if (die.rolling || isFusing(die) || time-die.launched < .19) return false;
-  const angle = Math.atan2(die.y-y,die.x-x)+random(-.34,.34);
+function launch(die, x, y, strength, manual, gesture = null) {
+  if (isHeld(die) || isFusing(die) || (!manual && !gesture?.reroll && pointer?.target===die) ||
+      (!gesture?.reroll && (die.rolling || time-die.launched < .19))) return false;
+  const spread = gesture?.angle===undefined ? .34 : .10;
+  const angle = (gesture?.angle ?? Math.atan2(die.y-y,die.x-x))+random(-spread,spread);
   const impulse = random(63,122)*unit*strength;
   die.vx = die.vx*.21+Math.cos(angle)*impulse;
   die.vy = die.vy*.21+Math.sin(angle)*impulse;
   die.z = Math.max(die.z,1);
-  die.vz = random(230,295)*unit*strength;
-  die.sx = random(8,15)*(Math.random()<.5 ? -1 : 1);
-  die.sy = random(6,13)*(Math.random()<.5 ? -1 : 1);
+  die.vz = random(230,295)*unit*Math.min(strength,1.48);
+  const spin = gesture?.hard ? 1.22 : 1;
+  die.sx = random(8,15)*spin*(Math.random()<.5 ? -1 : 1);
+  die.sy = random(6,13)*spin*(Math.random()<.5 ? -1 : 1);
   die.sz = random(-7,7);
   die.nextFace = 1+Math.floor(Math.random()*6);
   die.manualBatch = null;
   die.fromBlast = false;
   die.echo = null;
+  die.manualThrow = manual;
+  die.hardThrow = !!gesture?.hard;
+  die.slamAnchor = null;
   die.trail = [];
   die.launched = time;
   die.rolling = true;
   die.bounces = 0;
   if (manual) sound("hit");
   return true;
+}
+function hardImpact(die) {
+  if (!die.hardThrow) return;
+  die.hardThrow = false;
+  spark(die.x,die.y,["#ffe5a2","#f7bb75"],13);
+  sound("impact");
+  if (reducedMotion.matches || time-impactTime<.36) return;
+  impactTime = time;
+  hitStop = .026;
 }
 function addWave(source,kind = "manual") {
   const batch = kind==="manual" ? Symbol() : null;
@@ -1242,6 +1297,35 @@ function addWave(source,kind = "manual") {
 function waveRadius(wave) {
   const t = clamp(wave.t/wave.life,0,1);
   return Math.min(board.w,board.h)*wave.range*(1-(1-t)**2);
+}
+function tableSlam(point) {
+  if (time<slamReady || point.x<board.x || point.x>board.x+board.w || point.y<board.y || point.y>board.y+board.h) return false;
+  const radius = SLAM_RANGE*Math.min(board.w,board.h);
+  const targets = dice.filter(die=>!isHeld(die) && !isFusing(die) &&
+    (die.rolling || time-(die.landedAt ?? -Infinity)<.65 || held))
+    .map(die=>({die,distance:Math.hypot(die.x-point.x,die.y-point.y)}))
+    .filter(item=>item.distance<=radius)
+    .sort((a,b)=>a.distance-b.distance)
+    .slice(0,3);
+  if (!targets.length) return false;
+  for (const {die} of targets) {
+    const assist = held && Math.hypot(die.x-held.die.x,die.y-held.die.y)<=radius;
+    launch(die,point.x,point.y,.78,false,{reroll:true});
+    if (assist) {
+      die.slamAnchor = held;
+      if (held.misses || Math.random()<.60) die.nextFace = held.die.face;
+    }
+  }
+  slamReady = time+SLAM_COOLDOWN;
+  waves.push({x:point.x,y:point.y,range:SLAM_RANGE,t:0,life:.34,kind:"slam",remaining:0,hit:new Set()});
+  if (waves.length>24) waves.shift();
+  spark(point.x,point.y,["#a5fff1","#ffe4b1"],14);
+  if (!reducedMotion.matches && time-impactTime>=.36) {
+    impactTime = time;
+    hitStop = .019;
+  }
+  sound("slam");
+  return true;
 }
 function spark(x,y,palette,count) {
   if (reducedMotion.matches) count = Math.ceil(count*.35);
@@ -1283,6 +1367,10 @@ function settle(die) {
   let bonus = 0;
   const linked = new Set(candidates.map(other=>other.die));
   linked.delete(die);
+  const heldMatch = held && held.die!==die && held.die.face===die.face;
+  const grand = !!heldMatch && die.slamAnchor===held;
+  if (heldMatch) linked.add(held.die);
+  if (die.slamAnchor && die.slamAnchor===held && !grand) held.misses++;
   const echo = die.echo;
   const echoMatch = echo?.face===die.face && time<=echo.until && dice.includes(echo.source);
   if (echoMatch) linked.add(echo.source);
@@ -1292,7 +1380,8 @@ function settle(die) {
     state.resonances++;
     state.best = Math.max(state.best,streak);
     const sameWave = !!die.manualBatch && candidates.some(other=>other.die!==die && other.batch===die.manualBatch);
-    const resonanceRate = .60+.20*Math.min(4,linked.size)+.12*Math.min(5,streak-1)+(sameWave ? .35 : 0)+(echoMatch ? .20 : 0);
+    const resonanceRate = .60+.20*Math.min(4,linked.size)+.12*Math.min(5,streak-1)+
+      (sameWave ? .35 : 0)+(echoMatch ? .20 : 0)+(grand ? .75 : 0);
     bonus = Math.round(base*resonanceRate*(1+.25*state.talents.resonance)*(1+rewards.resonance/100));
     for (const other of Array.from(linked).slice(-4)) beams.push({a:other,b:die,life:.49,phase:random(0,6)});
     requestShake(linked.size,streak);
@@ -1302,6 +1391,15 @@ function settle(die) {
   } else {
     spark(die.x,die.y,["#cbb074","#fff1ad"],4);
   }
+  die.landedAt = time;
+  if (grand) {
+    held = null;
+    gainFever(earlyPlay() ? 34 : 24);
+    showThrowStatus("大共鳴！ スラムで固定した目が揃った");
+    spark(die.x,die.y,["#fff0a2","#a5ffe7","#fbb179"],24);
+    sound("grand");
+  }
+  if (die.manualThrow && earlyPlay()) gainFever(5);
   candidates.push({die,t:time,batch:die.manualBatch});
   const special = state.dieSpecials[die.slot];
   const star = starStats(die);
@@ -1351,11 +1449,11 @@ function settle(die) {
   sound("land");
   sound("coin");
   const life = bonus || burst ? 1.1 : .85;
-  placePopup({x:die.x,y:die.y-14*unit,life,total:life,amount,crit:bonus ? streak : 0,fever:multiplier===2,burst});
+  placePopup({x:die.x,y:die.y-14*unit,life,total:life,amount,crit:bonus ? streak : 0,fever:multiplier===2,burst,grand});
   awardMilestones();
 }
 function tickDie(die,dt) {
-  if (isFusing(die)) return;
+  if (isFusing(die) || isHeld(die)) return;
   die.x += die.vx*dt;
   die.y += die.vy*dt;
   const friction = Math.exp(-(die.rolling ? 1.15 : 8)*dt);
@@ -1377,6 +1475,7 @@ function tickDie(die,dt) {
   die.rz += die.sz*dt;
   if (die.z <= 0) {
     die.z = 0;
+    hardImpact(die);
     if (die.bounces < 2) {
       die.vz = Math.max(36*unit,-die.vz*(die.bounces ? .39 : .48));
       die.bounces++;
@@ -1408,14 +1507,15 @@ function separateDice() {
       const dist = Math.sqrt(distSq);
       const nx = dist > .001 ? dx/dist : 1, ny = dist > .001 ? dy/dist : 0;
       const gap = (min-dist)*.31;
-      a.x -= nx*gap; a.y -= ny*gap;
-      b.x += nx*gap; b.y += ny*gap;
+      const aFixed = isHeld(a), bFixed = isHeld(b);
+      if (!aFixed) {a.x -= nx*gap*(bFixed ? 2 : 1); a.y -= ny*gap*(bFixed ? 2 : 1);}
+      if (!bFixed) {b.x += nx*gap*(aFixed ? 2 : 1); b.y += ny*gap*(aFixed ? 2 : 1);}
       const approach = (a.vx-b.vx)*nx+(a.vy-b.vy)*ny;
       if (approach > 0) {
         const transfer = approach*.61;
-        a.vx -= transfer*nx; a.vy -= transfer*ny;
-        b.vx += transfer*nx; b.vy += transfer*ny;
-        if (approach > 34*unit) sound("hit");
+        if (!aFixed) {a.vx -= transfer*nx; a.vy -= transfer*ny;}
+        if (!bFixed) {b.vx += transfer*nx; b.vy += transfer*ny;}
+        if (approach > 34*unit) {sound("hit");hardImpact(a);hardImpact(b);}
       }
       confine(a,false); confine(b,false);
     }
@@ -1436,7 +1536,7 @@ function tickArm(arm,dt) {
     if (arm.sweep.elapsed>.66) arm.sweep = null;
   }
   if (time >= arm.next) {
-    const available = dice.filter(die=>!isFusing(die));
+    const available = dice.filter(die=>!isFusing(die) && !isHeld(die));
     const settled = available.filter(die=>!die.rolling);
     const targets = settled.length ? settled : available;
     const target = targets[Math.floor(Math.random()*targets.length)];
@@ -1451,10 +1551,10 @@ function tickArm(arm,dt) {
     const sweep = arm.sweep;
     sweep.fired = true;
     let target = sweep.target;
-    if (target.rolling || isFusing(target)) {
+    if (target.rolling || isFusing(target) || isHeld(target)) {
       let nearest = Infinity;
       for (const die of dice) {
-        if (die.rolling || isFusing(die)) continue;
+        if (die.rolling || isFusing(die) || isHeld(die)) continue;
         const distance = Math.hypot(die.x-sweep.x,die.y-sweep.y);
         if (distance>=nearest) continue;
         target = die;
@@ -1483,7 +1583,7 @@ function cascadeArm(source) {
   for (let depth=0;depth<rank && remaining>0 && sources.length;depth++) {
     const next = [];
     for (const from of sources) {
-      const nearby = dice.filter(die=>!die.rolling && !isFusing(die))
+      const nearby = dice.filter(die=>!die.rolling && !isFusing(die) && !isHeld(die))
         .map(die=>({die,distance:Math.hypot(die.x-from.x,die.y-from.y)}))
         .filter(item=>item.distance<=reach)
         .sort((a,b)=>a.distance-b.distance);
@@ -1510,6 +1610,7 @@ function tickFusion() {
 function step(dt) {
   time += dt;
   state.seconds += dt;
+  if (held && time>=held.until) held = null;
   tickFusion();
   tickFever(dt);
   for (const arm of arms) tickArm(arm,dt);
@@ -1857,7 +1958,7 @@ function drawWave(wave) {
   const radius = waveRadius(wave);
   if (radius<=0) return;
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius,0,Math.PI*2);
-  const color = wave.kind==="blast" ? "255,153,91" : wave.kind==="arm" ? "145,247,213" :
+  const color = wave.kind==="blast" ? "255,153,91" : wave.kind==="arm" || wave.kind==="slam" ? "145,247,213" :
     wave.kind==="star" ? "200,173,255" : "255,213,137";
   ctx.strokeStyle="rgba("+color+","+(1-t)*.66+")";
   ctx.lineWidth=Math.min(radius*.18,(3.5-2*t)*unit);ctx.stroke();
@@ -1922,13 +2023,14 @@ function placePopup(popup) {
   nearest.crit = Math.max(nearest.crit,popup.crit);
   nearest.fever ||= popup.fever;
   nearest.burst = Math.max(nearest.burst ?? 0,popup.burst ?? 0);
+  nearest.grand ||= popup.grand;
   nearest.life = Math.max(nearest.life,.4);
 }
 function drawPopup(popup) {
   const age=popup.total-popup.life;
   const cell = popupCell(popup.slot);
   const maxWidth = Math.max(1,popupGrid.w-7);
-  const annotated = popup.crit || popup.burst;
+  const annotated = popup.crit || popup.burst || popup.grand;
   const amountSize = Math.min(popupGrid.h*.36,Math.max(13,(annotated ? 17 : 15)*unit));
   const comboSize = Math.min(popupGrid.h*.26,Math.max(10,11*unit));
   const x=cell.x, y=cell.y-popupGrid.h*(age/popup.total*.14+(annotated ? .11 : 0));
@@ -1943,7 +2045,8 @@ function drawPopup(popup) {
   ctx.fillStyle=popup.burst ? "#ffe48b" : popup.fever ? "#fff0ad" : popup.crit ? "#c7ffcc" : "#ffe4a1";
   ctx.fillText(label,x,y,maxWidth);
   if (annotated) {
-    const combo=popup.burst ? "バースト ×"+popup.burst+(popup.crit ? " · 共鳴 ×"+popup.crit : "") :
+    const combo=popup.grand ? "大共鳴"+(popup.burst ? " · バースト ×"+popup.burst : "") :
+      popup.burst ? "バースト ×"+popup.burst+(popup.crit ? " · 共鳴 ×"+popup.crit : "") :
       "共鳴クリティカル"+(popup.crit>1 ? " ×"+popup.crit : "");
     const comboY = y+(amountSize+comboSize)*.64;
     ctx.font="750 "+comboSize+"px 'Segoe UI',sans-serif";
@@ -1959,9 +2062,11 @@ function tableShake() {
   const latestImpact = fusions.findLast(fusion=>fusion.impacted);
   const impact = latestImpact ? time-latestImpact.start-FUSION_IMPACT : -1;
   const kick = impact>=0 && impact<.24 ? 3.1*Math.sin(impact*55)*(1-impact/.24)**2 : 0;
+  const hitAge = time-impactTime;
+  const strike = hitAge<.18 ? 2.7*Math.sin(hitAge*63)*(1-hitAge/.18)**2 : 0;
   const x = amplitude ? Math.sin(elapsed*62)*amplitude : 0;
   const y = amplitude ? Math.sin(elapsed*48)*amplitude*.55 : 0;
-  return {x:clamp(x+kick*.65,-3.2,3.2),y:clamp(y+kick,-3.2,3.2)};
+  return {x:clamp(x+kick*.65+strike*.45,-3.2,3.2),y:clamp(y+kick+strike,-3.2,3.2)};
 }
 function drawStarAura(die) {
   const star = starStats(die);
@@ -2049,6 +2154,16 @@ function draw() {
     ctx.fillStyle=feverGlow;
     ctx.fillRect(board.x,board.y,board.w,board.h);
   }
+  if (held) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(held.die.x,held.die.y,SLAM_RANGE*Math.min(board.w,board.h),0,Math.PI*2);
+    ctx.strokeStyle = "#b9fff175";
+    ctx.lineWidth = Math.max(1,unit);
+    ctx.setLineDash([4*unit,5*unit]);
+    ctx.stroke();
+    ctx.restore();
+  }
   for (const aura of dice) {
     if (aura.rolling || state.dieSpecials[aura.slot]!=="aura") continue;
     ctx.beginPath();
@@ -2079,6 +2194,7 @@ function draw() {
     drawStarTrail(die);
     drawDie(die);
   }
+  drawThrowGuide();
   if (markedDie && !isFusing(markedDie) && time<markedUntil) {
     const die = markedDie;
     const y = die.y-die.z*.51;
@@ -2105,7 +2221,50 @@ function draw() {
   ctx.restore();
 }
 
-let pointer = null;
+const holdButton = byId("hold-toggle");
+const throwHint = byId("throw-hint"), slamStatus = byId("slam-status");
+function showThrowStatus(message) {
+  throwStatus = message;
+  throwStatusUntil = time+1.9;
+}
+function renderThrowControls() {
+  const coarse = coarsePointer.matches;
+  const hint = holdMode ? "止まったダイスを選んで固定" : held ?
+    "別のダイスを振り、近くをスラムして同じ目を狙う" :
+    (coarse ? "タップで投擲 · 長押し／フリックで強く" : "クリックで投擲 · 長押し／ドラッグで強く");
+  const button = holdMode ? "選択中" : held ? "解除 · "+held.die.face : "ホールド";
+  const remaining = Math.max(0,slamReady-time);
+  const status = time<throwStatusUntil ? throwStatus : remaining>0 ? "スラムまで "+remaining.toFixed(1)+"秒" :
+    (held ? "固定 "+held.die.face+" · "+Math.ceil(held.until-time)+"秒 · スラム可能" :
+      "フェルトを"+(coarse ? "タップ" : "クリック")+"でスラム");
+  if (throwHint.textContent!==hint) throwHint.textContent = hint;
+  if (holdButton.textContent!==button) holdButton.textContent = button;
+  if (slamStatus.textContent!==status) slamStatus.textContent = status;
+  const pressed = String(holdMode || !!held);
+  if (holdButton.getAttribute("aria-pressed")!==pressed) holdButton.setAttribute("aria-pressed",pressed);
+}
+function toggleHold() {
+  if (held) held = null;
+  else holdMode = !holdMode;
+  renderThrowControls();
+}
+function chooseHold(die) {
+  if (!die || die.rolling || isFusing(die)) {
+    showThrowStatus("ホールドは止まったダイスを選択");
+    renderThrowControls();
+    return;
+  }
+  held = {die,until:time+HOLD_DURATION,misses:0};
+  die.vx = 0;
+  die.vy = 0;
+  holdMode = false;
+  showThrowStatus("出目 "+die.face+" を固定");
+  renderThrowControls();
+}
+holdButton.addEventListener("click",()=>{
+  unlockAudio();
+  toggleHold();
+});
 function inputPoint(event) {
   const rect = canvas.getBoundingClientRect();
   const shift = tableShake();
@@ -2124,7 +2283,7 @@ function faceEntry(points,from,to) {
   }
   return start;
 }
-function hitDie(from,to) {
+function findDie(from,to) {
   let target, entry = Infinity;
   for (const die of dice) {
     if (isFusing(die)) continue;
@@ -2139,25 +2298,74 @@ function hitDie(from,to) {
       }
     }
   }
-  if (target) manualRoll(target,from.x+(to.x-from.x)*entry,from.y+(to.y-from.y)*entry);
+  return target;
 }
-function manualRoll(die,x,y) {
-  const strength = 1+.062*state.wave;
-  if (launch(die,x,y,strength,true) && state.wave) addWave(die);
+function manualRoll(die,x,y,power = 1,angle) {
+  const strength = Math.min(2.22,(1+.062*state.wave)*power);
+  const hard = power>=1.40;
+  if (!launch(die,x,y,strength,true,{angle,hard})) return false;
+  if (state.wave) addWave(die);
+  if (hard) spark(die.x,die.y,["#ffe3a1","#fff6d3"],8);
+  return true;
 }
 function keyboardRoll() {
   const x = board.x+board.w/2, y = board.y+board.h/2;
   let nearest;
   let limit = Infinity;
   for (const die of dice) {
-    if (die.rolling || isFusing(die)) continue;
+    if (die.rolling || isFusing(die) || isHeld(die)) continue;
     const distance = Math.hypot(die.x-x,die.y-y);
     if (distance <= limit) {
       nearest = die;
       limit = distance;
     }
   }
-  if (nearest) manualRoll(nearest,x,y);
+  if (holdMode) chooseHold(nearest);
+  else if (nearest) manualRoll(nearest,x,y);
+}
+function aimPower(gesture,now) {
+  const span = Math.min(board.w,board.h);
+  const dx = gesture.last.x-gesture.start.x, dy = gesture.last.y-gesture.start.y;
+  const distance = Math.hypot(dx,dy);
+  const flick = distance>Math.max(7,span*.022);
+  const charge = clamp((now-gesture.started-130)/750,0,1);
+  const speed = flick ? gesture.speed*clamp(1-(now-gesture.movedAt)/300,0,1) : 0;
+  const power = 1+Math.min(.9,charge*.70+(flick ? Math.min(.66,distance/span*1.6+speed*.16) : 0));
+  return {power,flick,angle:flick ? Math.atan2(dy,dx) : undefined};
+}
+function drawThrowGuide() {
+  if (held) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(held.die.x,held.die.y,22*unit*starStats(held.die).size,0,Math.PI*2);
+    ctx.strokeStyle = "#b9fff1";
+    ctx.lineWidth = 2*unit;
+    ctx.stroke();
+    ctx.fillStyle = "#d2fff2";
+    ctx.font = "700 "+Math.max(10,11*unit)+"px 'Segoe UI',sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("固定 "+held.die.face,held.die.x,held.die.y+29*unit);
+    ctx.restore();
+  }
+  if (!pointer?.target || pointer.target.rolling || holdMode || isHeld(pointer.target)) return;
+  const {power,angle} = aimPower(pointer,performance.now());
+  if (power<=1.01) return;
+  const {x,y} = pointer.target;
+  ctx.save();
+  ctx.strokeStyle = "#ffe1a0";
+  ctx.lineWidth = 2.8*unit;
+  ctx.beginPath();
+  ctx.arc(x,y,22*unit,-Math.PI/2,-Math.PI/2+Math.PI*2*(power-1)/.9);
+  ctx.stroke();
+  if (angle!==undefined) {
+    const reach = (35+power*15)*unit;
+    const endX = x+Math.cos(angle)*reach, endY = y+Math.sin(angle)*reach;
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(endX,endY);
+    ctx.lineTo(endX-Math.cos(angle-.48)*9*unit,endY-Math.sin(angle-.48)*9*unit);
+    ctx.moveTo(endX,endY);ctx.lineTo(endX-Math.cos(angle+.48)*9*unit,endY-Math.sin(angle+.48)*9*unit);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 canvas.addEventListener("pointerdown",event=>{
   if (pointer || event.button !== 0) return;
@@ -2165,25 +2373,52 @@ canvas.addEventListener("pointerdown",event=>{
   unlockAudio();
   canvas.setPointerCapture(event.pointerId);
   const at=inputPoint(event);
-  pointer={id:event.pointerId,...at};
-  hitDie(at,at);
+  const now = performance.now();
+  pointer={id:event.pointerId,start:at,last:at,target:findDie(at,at),started:now,movedAt:now,speed:0};
 });
 function drag(event) {
   if (pointer?.id !== event.pointerId) return;
   const at=inputPoint(event);
-  if (at.x!==pointer.x || at.y!==pointer.y) hitDie(pointer,at);
-  pointer={id:event.pointerId,...at};
+  const now = performance.now();
+  const distance = Math.hypot(at.x-pointer.last.x,at.y-pointer.last.y);
+  if (distance<=.25) return;
+  pointer.speed = distance/unit/Math.max(8,now-pointer.movedAt);
+  if (!pointer.target && !holdMode && aimPower({...pointer,last:at},now).flick) {
+    const crossed = findDie(pointer.last,at);
+    if (crossed) manualRoll(crossed,pointer.last.x,pointer.last.y,1.25,Math.atan2(at.y-pointer.last.y,at.x-pointer.last.x));
+  }
+  pointer.last = at;
+  pointer.movedAt = now;
 }
 canvas.addEventListener("pointermove",drag);
-canvas.addEventListener("pointerup",drag);
+canvas.addEventListener("pointerup",event=>{
+  if (pointer?.id!==event.pointerId) return;
+  drag(event);
+  const gesture = pointer;
+  pointer = null;
+  if (holdMode) {
+    chooseHold(gesture.target ?? findDie(gesture.last,gesture.last));
+    return;
+  }
+  const {power,angle,flick} = aimPower(gesture,performance.now());
+  const {target,last,start} = gesture;
+  if (target && !target.rolling) manualRoll(target,start.x,start.y,power,angle);
+  else if (!flick && !tableSlam(last) && time>=slamReady) showThrowStatus("スラムは動いているダイスの近くで使えます");
+  renderThrowControls();
+});
 function release(event) {if (pointer?.id===event.pointerId) pointer=null;}
 for (const event of ["pointerup","pointercancel","lostpointercapture"]) canvas.addEventListener(event,release);
 document.addEventListener("keydown",event=>{
-  if (event.repeat || dialog.open || vipDialog.open || (event.code!=="Space" && !(event.key==="Enter" && event.target===canvas))) return;
+  if (event.repeat || dialog.open || vipDialog.open ||
+      (!["Space","KeyH","KeyS"].includes(event.code) && !(event.key==="Enter" && event.target===canvas))) return;
   if (event.target!==canvas && (event.target!==document.body || !matchMedia("(pointer:fine)").matches)) return;
   event.preventDefault();
   unlockAudio();
-  keyboardRoll();
+  if (event.code==="KeyH") toggleHold();
+  else if (event.code==="KeyS") {
+    const target = dice.find(die=>!isHeld(die) && die.rolling) ?? dice.find(die=>!isHeld(die));
+    if (target) tableSlam(target);
+  } else keyboardRoll();
 });
 
 applySkin();
@@ -2197,12 +2432,15 @@ const observer = new ResizeObserver(requestResize);
 observer.observe(canvas);
 window.addEventListener("resize",requestResize);
 
-let previous=performance.now(), carry=0, lastUI=0, lastFeverUI=0;
+let previous=performance.now(), carry=0, lastUI=0, lastFeverUI=0, lastThrowUI=0;
 function frame(now) {
   if (!document.hidden) {
     if (resizePending) resize();
-    carry += Math.min(.06,(now-previous)/1000);
-    while (carry>=1/120) {
+    const elapsed = Math.min(.06,(now-previous)/1000);
+    const pause = Math.min(hitStop,elapsed);
+    hitStop -= pause;
+    carry += elapsed-pause;
+    while (hitStop<=0 && carry>=1/120) {
       step(1/120);
       carry-=1/120;
     }
@@ -2214,6 +2452,10 @@ function frame(now) {
     } else if (state.feverLeft>0 && now-lastFeverUI>=50) {
       renderFever();
       lastFeverUI=now;
+    }
+    if (now-lastThrowUI>=100) {
+      renderThrowControls();
+      lastThrowUI=now;
     }
   }
   previous=now;

@@ -62,8 +62,12 @@
         <div id="achievement-notice" class="notice achievement-notice" role="status"></div>
       </div>
       <div class="stage-bottom">
-        <p id="play-hint"><svg><use href="#i-hand"/></svg><span class="direct-hint mouse-hint">ダイスをクリックして振る</span><span class="direct-hint touch-hint">ダイスをタップして振る</span><span class="wave-hint mouse-hint">ダイスをクリック・ドラッグして衝撃波を起こす</span><span class="wave-hint touch-hint">ダイスをタップ・スワイプして衝撃波を起こす</span></p>
-        <span class="key-hint"><kbd>SPACE</kbd> でも振れます</span>
+        <div>
+          <p id="play-hint"><svg><use href="#i-hand"/></svg><span id="throw-hint">タップで投擲 · 長押し／フリックで強く投げる</span></p>
+          <p id="table-hint"><span id="slam-status">フェルトをタップでスラム</span></p>
+        </div>
+        <button id="hold-toggle" class="hold-toggle" aria-pressed="false" aria-describedby="throw-hint">ホールド</button>
+        <span class="key-hint"><kbd>SPACE</kbd> 投擲　<kbd>H</kbd> ホールド　<kbd>S</kbd> スラム</span>
       </div>
     </section>
 
