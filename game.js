@@ -78,7 +78,7 @@ function feverMultiplier() {return state.feverLeft>0 ? 2 : 1;}
 function armInterval() {return interval(state.speed)/feverMultiplier();}
 function rollValue(face,rank = 0) {return Math.round(face*materials[rank].multiplier*(1+.2*state.talents.income));}
 function normalizeMaterial(rank,fallback = 0) {
-  return Number.isFinite(rank) ? clamp(Math.floor(rank),fallback,caps.material) : fallback;
+  return Number.isFinite(rank) ? clamp(Math.floor(rank),0,caps.material) : fallback;
 }
 function fresh() {
   return {coins:0,dice:1,dieMaterials:[0],materialBase:0,arms:0,speed:0,wave:0,rolls:0,resonances:0,
@@ -102,14 +102,18 @@ function load() {
         initial[key] = clamp(key === "seconds" ? raw[key] : Math.floor(raw[key]),key === "dice" ? 1 : 0,max);
       }
     }
-    const ranks = Array.isArray(raw.dieMaterials) ? raw.dieMaterials : null;
-    initial.materialBase = normalizeMaterial(ranks ? raw.materialBase : raw.material);
-    initial.dieMaterials = Array.from({length:initial.dice},(_,i)=>normalizeMaterial(ranks?.[i],initial.materialBase));
     if (!Number.isFinite(raw.runEarned)) initial.runEarned = initial.earned;
     for (const talent of talents) {
       const rank = raw.talents?.[talent.id];
       if (Number.isFinite(rank)) initial.talents[talent.id] = clamp(Math.floor(rank),0,talent.costs.length);
     }
+    const ranks = Array.isArray(raw.dieMaterials) ? raw.dieMaterials : null;
+    const legacyRank = normalizeMaterial(raw.material);
+    const savedBase = ranks ? normalizeMaterial(raw.materialBase) : legacyRank;
+    // Repair the spawn material without changing the ranks of existing dice.
+    initial.materialBase = Math.min(savedBase,initial.talents.materialStart);
+    initial.dieMaterials = Array.from({length:initial.dice},(_,i)=>
+      ranks ? normalizeMaterial(ranks[i],initial.materialBase) : legacyRank);
     if (!skins[initial.skin] || skins[initial.skin].unlock>initial.prestiges) initial.skin = 0;
   } catch {
     // An invalid save falls back to the starting table.
@@ -332,7 +336,7 @@ vipDialog.addEventListener("close",()=>{
   if (newSkin>=0) remaining.skin = newSkin;
   remaining.coins = remaining.talents.bankroll*20;
   remaining.dice = 1+remaining.talents.dice;
-  remaining.materialBase = Math.max(Math.min(...old.dieMaterials),remaining.talents.materialStart);
+  remaining.materialBase = remaining.talents.materialStart;
   remaining.dieMaterials = Array(remaining.dice).fill(remaining.materialBase);
   state = remaining;
   resetTable();
