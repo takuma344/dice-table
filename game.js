@@ -13,18 +13,20 @@ const materials = [
 ];
 const caps = {dice:40, material:3, arms:6, speed:7, wave:8};
 const VIP_TARGET = 40000;
-const MATERIAL_PRICES = [85,650,4200];
+const MATERIAL_PRICES = [85,900,6200];
 const SPECIAL_DICE = {
-  blast:{name:"爆裂ダイス",mark:"爆",icon:"wave",color:"#ff9d63",cost:650,detail:"出目5・6で周囲に爆裂波を放つ"},
-  aura:{name:"増幅ダイス",mark:"増",icon:"gem",color:"#90eed0",cost:950,detail:"静止中、近くの他のダイスの配当を25%増やす"},
-  heat:{name:"熱気ダイス",mark:"熱",icon:"speed",color:"#ffe08a",cost:850,detail:"出目4〜6でフィーバーゲージを6ポイント加算"},
+  blast:{name:"爆裂ダイス",mark:"爆",icon:"wave",color:"#ff9d63",cost:800,detail:"出目5・6で周囲に爆裂波を放つ"},
+  aura:{name:"増幅ダイス",mark:"増",icon:"gem",color:"#90eed0",cost:1150,detail:"静止中、近くの他のダイスの配当を25%増やす"},
+  heat:{name:"熱気ダイス",mark:"熱",icon:"speed",color:"#ffe08a",cost:1000,detail:"出目4〜6でフィーバーゲージを6ポイント加算"},
 };
 const STAR_RANKS = [
   {pay:1,size:1,pulse:0,targets:0,match:0,heat:0,color:"#e5cc96"},
-  {pay:3.25,size:1.13,pulse:.125,targets:1,match:.22,heat:4,color:"#ffe28d"},
-  {pay:9.5,size:1.26,pulse:.205,targets:2,match:.36,heat:8,color:"#a4ffe4"},
-  {pay:28,size:1.40,pulse:.29,targets:4,match:.52,heat:14,color:"#ffd296"},
+  {pay:2.65,size:1.13,pulse:.125,targets:1,match:.22,heat:4,color:"#ffe28d"},
+  {pay:6.9,size:1.26,pulse:.205,targets:2,match:.36,heat:8,color:"#a4ffe4"},
+  {pay:18,size:1.40,pulse:.29,targets:4,match:.52,heat:14,color:"#ffd296"},
 ];
+const MERGE_PRICES = [12,175,1800];
+const MERGE_MATERIAL_FACTORS = [1,2.4,6,14];
 const MAX_STARS = STAR_RANKS.length;
 const SPECIAL_LIMIT = MAX_STARS;
 const FUSION_IMPACT = .40;
@@ -92,12 +94,12 @@ const upgrades = [
     cost:s=>dicePurchasePrice(dicePriceBasis(s)),
     detail:s=>s.dice+" / "+caps.dice+" 個 · 価格基準 "+dicePriceBasis(s)+" 個分"},
   {key:"material", icon:"gem", title:"ダイスの材質", action:"1個進化"},
-  {key:"arms", icon:"arm", title:"ロボットアーム", action:"雇用", cost:s=>75*2.48**s.arms,
+  {key:"arms", icon:"arm", title:"ロボットアーム", action:"雇用", cost:s=>85*2.85**s.arms,
     detail:s=>s.arms+" / 6 基 · "+(s.talents.armWave ? "主投擲で衝撃波" : s.talents.chain ? "1個を投擲し、近くへ連鎖" : "1作動につきダイス1個")},
-  {key:"speed", icon:"speed", title:"アーム速度", action:"強化", cost:s=>125*1.72**s.speed,
+  {key:"speed", icon:"speed", title:"アーム速度", action:"強化", cost:s=>165*2.05**s.speed,
     detail:s=>s.arms ? "Lv. "+s.speed+" · "+armInterval().toFixed(1)+" 秒ごとに作動" : "ロボットアームを雇うと解放"},
   {key:"wave", icon:"wave", title:"テーブル衝撃波", action:s=>s.wave ? "強化" : "解放",
-    cost:s=>s.wave<2 ? [22,55][s.wave] : 95*1.68**(s.wave-2),
+    cost:s=>s.wave<2 ? [22,72][s.wave] : 150*1.90**(s.wave-2),
     detail:s=>s.wave ? "Lv. "+s.wave+" · 手動で短辺の "+(waveRange(s.wave)*100).toFixed(1).replace(/\.0$/,"")+"% まで巻き込む" :
       "Lv. 0 · 近くのダイスも一緒に振れる"},
 ];
@@ -130,11 +132,11 @@ function dicePriceBasis(progress) {
   return progress.dieStars.reduce((count,stars)=>count+2**(stars-1),0);
 }
 function dicePurchasePrice(basis) {
-  if (basis<5) return [9,17,30,46][basis-1];
+  if (basis<5) return [9,17,40,76][basis-1];
   const early = Math.min(basis,36);
   const middle = clamp(basis-36,0,20);
   const late = Math.max(0,basis-56);
-  return 65*1.19**(early-5)*1.15**Math.max(0,early-12)*1.14**middle*(1+late/18)**2.35;
+  return 128*1.22**(early-5)*1.16**Math.max(0,early-9)*1.16**middle*(1+late/18)**2.45;
 }
 function rollValue(face,rank = 0,stars = 1) {
   return Math.round(face*materials[rank].multiplier*STAR_RANKS[stars-1].pay*(1+.2*state.talents.income));
@@ -375,7 +377,7 @@ function idleReward(from, to) {
     return sum;
   },0);
   const averageRoll = total/(6*state.dice);
-  const amount = Math.floor(seconds*estimatedRolls*averageRoll*(1+milestoneBonus().income/100));
+  const amount = Math.floor(seconds*estimatedRolls*averageRoll*.7*(1+milestoneBonus().income/100));
   credit(amount);
   return amount;
 }
@@ -418,7 +420,11 @@ for (const [type,special] of Object.entries(SPECIAL_DICE)) {
 function conversionOffer(type) {
   const count = state.dieSpecials.filter(value=>value===type).length;
   const slot = state.dieSpecials.findLastIndex((value,index)=>value===null && state.dieStars[index]===1);
-  return {count,slot,price:Math.ceil(SPECIAL_DICE[type].cost*1.28**count)};
+  const convertedBasis = state.dieSpecials.reduce((total,value,index)=>
+    total+(value===type ? 2**(state.dieStars[index]-1) : 0),0);
+  const rosterFactor = 1+.045*Math.max(0,dicePriceBasis(state)-4);
+  const conversionFactor = 1.65**Math.min(convertedBasis,8)*(1+.12*Math.max(0,convertedBasis-8));
+  return {count,slot,price:Math.ceil(SPECIAL_DICE[type].cost*conversionFactor*rosterFactor)};
 }
 function buySpecial(type) {
   if (!Object.hasOwn(SPECIAL_DICE,type)) return;
@@ -485,6 +491,13 @@ function mergePreview(die) {
   return "配当 ×"+STAR_RANKS[stars-1].pay+" → ×"+STAR_RANKS[next-1].pay+
     " · 着地波 最大"+STAR_RANKS[next-1].targets+"個"+effect;
 }
+function mergePrice(die) {
+  const {slot} = die;
+  const rosterFactor = 1+.05*Math.max(0,dicePriceBasis(state)-4);
+  const specialFactor = state.dieSpecials[slot] ? 1.75 : 1;
+  return Math.ceil(MERGE_PRICES[state.dieStars[slot]-1]*
+    MERGE_MATERIAL_FACTORS[state.dieMaterials[slot]]*specialFactor*rosterFactor);
+}
 function renderMerges() {
   const groups = new Map();
   for (const die of dice) {
@@ -507,18 +520,26 @@ function renderMerges() {
       const row = document.createElement("article");
       row.className = "upgrade merge-option";
       row.innerHTML = '<span class="upgrade-icon merge-icon" aria-hidden="true">★</span><div><h4 class="upgrade-name"></h4>'+
-        '<p class="upgrade-detail"></p></div><button class="buy">合成する</button>';
+        '<p class="upgrade-detail"></p></div><button class="buy"><span class="buy-label">合成する</span>'+
+        '<span class="price">'+icon("coin")+'<span></span></span></button>';
       const button = row.querySelector("button");
       button.addEventListener("click",()=>mergeDice(key));
-      button.setAttribute("aria-label",mergeName(die)+" ★"+stars+"を2個合成");
       byId("merge-options").append(row);
-      view = {row,title:row.querySelector("h4"),status:row.querySelector("p"),button};
+      view = {row,title:row.querySelector("h4"),status:row.querySelector("p"),button,
+        price:button.lastElementChild.lastElementChild};
       view.title.textContent = mergeName(die)+" ★"+stars+" → ★"+(stars+1);
       mergeRows.set(key,view);
     }
     pairs += Math.floor(group.length/2);
     const status = "所持 "+group.length+" 個 · "+mergePreview(die);
     if (view.status.textContent!==status) view.status.textContent = status;
+    const price = mergePrice(die);
+    const label = format(price);
+    view.button.disabled = state.coins<price;
+    if (view.price.textContent!==label) {
+      view.price.textContent = label;
+      view.button.setAttribute("aria-label",mergeName(die)+" ★"+stars+"を2個合成 "+label+" コイン");
+    }
   }
   byId("merge-empty").hidden = mergeRows.size>0;
   mergeTabCount.hidden = pairs===0;
@@ -534,11 +555,14 @@ function mergeDice(key) {
   const pair = dice.filter(die=>mergeKey(die)===key).slice(0,2);
   if (pair.length!==2 || state.dieStars[pair[0].slot]>=MAX_STARS) return;
   const [first,second] = pair;
+  const price = mergePrice(first);
+  if (state.coins<price) return;
   if (held && pair.includes(held.die)) held = null;
   if (pointer?.target && pair.includes(pointer.target)) pointer = null;
   unlockAudio();
   const inputs = pair.map(die=>({die:{...die},rank:state.dieMaterials[die.slot],
     type:state.dieSpecials[die.slot],stars:state.dieStars[die.slot]}));
+  state.coins -= price;
   const stars = ++state.dieStars[first.slot];
   state.merges++;
   const removed = second.slot;
@@ -854,14 +878,20 @@ function renderGoal() {
 function materialOffer() {
   const from = Math.min(...state.dieMaterials);
   const to = from+1;
+  const index = state.dieMaterials.indexOf(from);
   const advanced = state.dieMaterials.filter(rank=>rank>=to).length;
   const requiredRebirths = materialRebirths(to);
   const needsLicense = to>1 && !state.talents.materialPermit;
-  const rosterFactor = 1+.035*Math.max(0,state.dice-6);
-  const progressFactor = (1+.08*advanced)*1.095**Math.max(0,advanced-4);
-  return {from,to,index:state.dieMaterials.indexOf(from),capped:from===caps.material,
+  const advancedBasis = state.dieMaterials.reduce((total,rank,slot)=>
+    total+(rank>=to ? 2**(state.dieStars[slot]-1) : 0),0);
+  const rosterFactor = 1+.055*Math.max(0,dicePriceBasis(state)-4);
+  const earlyGrowth = 1.14**clamp(advancedBasis-3,0,15);
+  const lateGrowth = 1+Math.max(0,advancedBasis-18)/30;
+  const progressFactor = (1+.12*advancedBasis)*earlyGrowth*lateGrowth;
+  const starFactor = 1.8**(state.dieStars[index]-1);
+  return {from,to,index,capped:from===caps.material,
     advanced,requiredRebirths,needsLicense,locked:needsLicense || state.prestiges<requiredRebirths,
-    price:Math.ceil((MATERIAL_PRICES[from] ?? Infinity)*rosterFactor*progressFactor)};
+    price:Math.ceil((MATERIAL_PRICES[from] ?? Infinity)*rosterFactor*progressFactor*starFactor)};
 }
 function materialRebirths(tier) {
   return Math.max(0,tier-2);
@@ -918,7 +948,7 @@ function renderUI() {
     view.detail.textContent = item.key!=="material" ? item.detail(state) : capped ? "全ダイスが最高材質" :
       offer.needsLicense ? materials[offer.to].name+"には材質ライセンスが必要" :
       locked ? "VIP転生 "+offer.requiredRebirths+" 回で"+materials[offer.to].name+"を解放" :
-      "ダイス #"+(offer.index+1)+" を"+materials[offer.to].name+" ×"+materials[offer.to].multiplier+
+      "ダイス #"+(offer.index+1)+" ★"+state.dieStars[offer.index]+" を"+materials[offer.to].name+" ×"+materials[offer.to].multiplier+
       "へ · "+offer.advanced+"/"+state.dice+"個済み";
     view.button.disabled = capped || locked || state.coins < price;
     const action = typeof item.action === "function" ? item.action(state) : item.action;
@@ -1263,6 +1293,7 @@ function launch(die, x, y, strength, manual, gesture = null) {
   die.echo = null;
   die.manualThrow = manual;
   die.hardThrow = !!gesture?.hard;
+  die.aimedThrow = gesture?.angle!==undefined;
   die.slamAnchor = null;
   die.trail = [];
   die.launched = time;
@@ -1380,8 +1411,8 @@ function settle(die) {
     state.resonances++;
     state.best = Math.max(state.best,streak);
     const sameWave = !!die.manualBatch && candidates.some(other=>other.die!==die && other.batch===die.manualBatch);
-    const resonanceRate = .60+.20*Math.min(4,linked.size)+.12*Math.min(5,streak-1)+
-      (sameWave ? .35 : 0)+(echoMatch ? .20 : 0)+(grand ? .75 : 0);
+    const resonanceRate = .32+.16*Math.min(4,linked.size)+.10*Math.min(5,streak-1)+
+      (sameWave ? .35 : 0)+(echoMatch ? .25 : 0);
     bonus = Math.round(base*resonanceRate*(1+.25*state.talents.resonance)*(1+rewards.resonance/100));
     for (const other of Array.from(linked).slice(-4)) beams.push({a:other,b:die,life:.49,phase:random(0,6)});
     requestShake(linked.size,streak);
@@ -1395,7 +1426,7 @@ function settle(die) {
   if (grand) {
     held = null;
     gainFever(earlyPlay() ? 34 : 24);
-    showThrowStatus("大共鳴！ スラムで固定した目が揃った");
+    showThrowStatus("大共鳴 ×3！ スラムで固定した目が揃った");
     spark(die.x,die.y,["#fff0a2","#a5ffe7","#fbb179"],24);
     sound("grand");
   }
@@ -1425,13 +1456,18 @@ function settle(die) {
   if (boost.bonus) spark(die.x,die.y,["#90eed0"],4);
   if (boost.heat) gainFever(boost.heat);
   const multiplier = feverMultiplier();
-  const highCombo = linked.size>0 && streak>=4;
+  const highCombo = grand || (linked.size>0 && streak>=4);
   const highStar = stars>=3;
-  const specialActive = blastFired || (heat && die.face>=heat.face) || special==="aura" || boost.bonus>0;
+  const specialSynergy = blastFired || (heat && die.face>=heat.face) || boost.bonus>0;
+  const specialActive = specialSynergy || special==="aura";
   const burst = multiplier===2 && ((highStar && (highCombo || specialActive)) || (highCombo && specialActive)) ?
     (highStar && highCombo && specialActive ? 6 : 4) : 0;
-  const payout = Math.round((base+bonus)*(1+boost.bonus/100)*(multiplier===2 ? 1+(heat?.feverBonus ?? 0) : 1))*(burst || multiplier);
-  const amount = Math.round(payout*(1+rewards.income/100));
+  const precision = grand ? 3 : heldMatch ? 1.45 : 1;
+  const chain = linked.size ? 1+.15*clamp(streak-2,0,4)+
+    (specialSynergy ? .25 : 0)+(die.aimedThrow ? .15 : 0) : 1;
+  const heatFactor = multiplier===2 ? 1+(heat?.feverBonus ?? 0) : 1;
+  const amount = Math.round((base+bonus)*precision*chain*(1+boost.bonus/100)*
+    heatFactor*(burst || multiplier)*(1+rewards.income/100));
   credit(amount);
   if (multiplier===2) {
     state.feverCoins = Math.min(Number.MAX_SAFE_INTEGER,state.feverCoins+amount);
@@ -2045,7 +2081,7 @@ function drawPopup(popup) {
   ctx.fillStyle=popup.burst ? "#ffe48b" : popup.fever ? "#fff0ad" : popup.crit ? "#c7ffcc" : "#ffe4a1";
   ctx.fillText(label,x,y,maxWidth);
   if (annotated) {
-    const combo=popup.grand ? "大共鳴"+(popup.burst ? " · バースト ×"+popup.burst : "") :
+    const combo=popup.grand ? "大共鳴 ×3"+(popup.burst ? " · バースト ×"+popup.burst : "") :
       popup.burst ? "バースト ×"+popup.burst+(popup.crit ? " · 共鳴 ×"+popup.crit : "") :
       "共鳴クリティカル"+(popup.crit>1 ? " ×"+popup.crit : "");
     const comboY = y+(amountSize+comboSize)*.64;
@@ -2230,7 +2266,7 @@ function showThrowStatus(message) {
 function renderThrowControls() {
   const coarse = coarsePointer.matches;
   const hint = holdMode ? "止まったダイスを選んで固定" : held ?
-    "別のダイスを振り、近くをスラムして同じ目を狙う" :
+    "別のダイスの近くをスラム。同じ目が揃うと大共鳴 ×3" :
     (coarse ? "タップで投擲 · 長押し／フリックで強く" : "クリックで投擲 · 長押し／ドラッグで強く");
   const button = holdMode ? "選択中" : held ? "解除 · "+held.die.face : "ホールド";
   const remaining = Math.max(0,slamReady-time);
