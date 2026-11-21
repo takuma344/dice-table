@@ -21,9 +21,9 @@ const SPECIAL_DICE = {
 };
 const STAR_RANKS = [
   {pay:1,size:1,pulse:0,targets:0,match:0,heat:0,color:"#e5cc96"},
-  {pay:4,size:1.13,pulse:.125,targets:1,match:.22,heat:4,color:"#ffe28d"},
-  {pay:14,size:1.26,pulse:.205,targets:2,match:.36,heat:8,color:"#a4ffe4"},
-  {pay:48,size:1.40,pulse:.29,targets:4,match:.52,heat:14,color:"#ffd296"},
+  {pay:3.25,size:1.13,pulse:.125,targets:1,match:.22,heat:4,color:"#ffe28d"},
+  {pay:9.5,size:1.26,pulse:.205,targets:2,match:.36,heat:8,color:"#a4ffe4"},
+  {pay:28,size:1.40,pulse:.29,targets:4,match:.52,heat:14,color:"#ffd296"},
 ];
 const MAX_STARS = STAR_RANKS.length;
 const SPECIAL_LIMIT = MAX_STARS;
@@ -67,8 +67,8 @@ const talents = [
 ];
 const upgrades = [
   {key:"dice", icon:"die", title:"ダイス購入", action:"購入",
-    cost:s=>s.dice<5 ? [14,22,34,48][s.dice-1] : 65*1.19**(s.dice-5)*1.15**Math.max(0,s.dice-12),
-    detail:s=>s.dice+" / 40 個 · 同時に振れるダイスを増やす"},
+    cost:s=>dicePurchasePrice(dicePriceBasis(s)),
+    detail:s=>s.dice+" / "+caps.dice+" 個 · 価格基準 "+dicePriceBasis(s)+" 個分"},
   {key:"material", icon:"gem", title:"ダイスの材質", action:"1個進化"},
   {key:"arms", icon:"arm", title:"ロボットアーム", action:"雇用", cost:s=>95*2.48**s.arms,
     detail:s=>s.arms+" / 6 基 · "+(s.talents.armWave ? "主投擲で衝撃波" : s.talents.chain ? "1個を投擲し、近くへ連鎖" : "1作動につきダイス1個")},
@@ -99,6 +99,17 @@ function waveRange(level) {return .10+.025*(level-1);}
 function armWaveRange(level) {return .17+.015*Math.max(0,level-1);}
 function feverMultiplier() {return state.feverLeft>0 ? 2 : 1;}
 function armInterval() {return interval(state.speed)/feverMultiplier();}
+function dicePriceBasis(progress) {
+  // Each merge preserves the number of original dice represented by its two inputs.
+  return progress.dieStars.reduce((count,stars)=>count+2**(stars-1),0);
+}
+function dicePurchasePrice(basis) {
+  if (basis<5) return [14,22,34,48][basis-1];
+  const early = Math.min(basis,36);
+  const middle = clamp(basis-36,0,20);
+  const late = Math.max(0,basis-56);
+  return 65*1.19**(early-5)*1.15**Math.max(0,early-12)*1.14**middle*(1+late/18)**2.35;
+}
 function rollValue(face,rank = 0,stars = 1) {
   return Math.round(face*materials[rank].multiplier*STAR_RANKS[stars-1].pay*(1+.2*state.talents.income));
 }
