@@ -38,9 +38,9 @@ const talents = [
   {id:"armWave",branch:"アーム連鎖",icon:"wave",title:"アーム衝撃波",costs:[8],requires:"chain",
     detail:()=>"アームの主投擲で衝撃波を1回発生。衝撃波Lv.で範囲が広がる"},
   {id:"materialPermit",branch:"材質",icon:"gem",title:"材質ライセンス",costs:[1],
-    detail:()=>"次の材質を転生1回分早く解放。全ダイスの材質条件も必要"},
+    detail:()=>"黄金・ネオンへの進化に必須。全ダイスの材質条件も必要"},
   {id:"materialStart",branch:"材質",icon:"die",title:"材質の下地",costs:[2,4],
-    detail:n=>"次の転生後の初期ダイス・購入ダイスを "+materials[n].name+"以上にする"},
+    detail:n=>"解放・強化した時点から、新しく生成・購入するダイスは"+materials[n].name},
 ];
 const upgrades = [
   {key:"dice", icon:"die", title:"ダイス購入", action:"購入",
@@ -81,7 +81,7 @@ function normalizeMaterial(rank,fallback = 0) {
   return Number.isFinite(rank) ? clamp(Math.floor(rank),0,caps.material) : fallback;
 }
 function fresh() {
-  return {coins:0,dice:1,dieMaterials:[0],materialBase:0,arms:0,speed:0,wave:0,rolls:0,resonances:0,
+  return {coins:0,dice:1,dieMaterials:[0],arms:0,speed:0,wave:0,rolls:0,resonances:0,
     best:0,earned:0,seconds:0,muted:false,feverCharge:0,feverLeft:0,runEarned:0,
     vipChips:0,prestiges:0,skin:0,talents:Object.fromEntries(talents.map(talent=>[talent.id,0])),
     savedAt:Date.now()};
@@ -93,7 +93,7 @@ function load() {
     const raw = JSON.parse(localStorage.getItem(SAVE));
     if (!raw || typeof raw !== "object") return initial;
     for (const key of Object.keys(initial)) {
-      if (key === "talents" || key === "dieMaterials" || key === "materialBase") continue;
+      if (key === "talents" || key === "dieMaterials") continue;
       if (key === "muted") initial[key] = raw[key] === true;
       else if (key === "feverLeft" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,FEVER_DURATION);
       else if (key === "feverCharge" && Number.isFinite(raw[key])) initial[key] = clamp(Math.floor(raw[key]),0,99);
@@ -109,11 +109,8 @@ function load() {
     }
     const ranks = Array.isArray(raw.dieMaterials) ? raw.dieMaterials : null;
     const legacyRank = normalizeMaterial(raw.material);
-    const savedBase = ranks ? normalizeMaterial(raw.materialBase) : legacyRank;
-    // Repair the spawn material without changing the ranks of existing dice.
-    initial.materialBase = Math.min(savedBase,initial.talents.materialStart);
     initial.dieMaterials = Array.from({length:initial.dice},(_,i)=>
-      ranks ? normalizeMaterial(ranks[i],initial.materialBase) : legacyRank);
+      ranks ? normalizeMaterial(ranks[i],initial.talents.materialStart) : legacyRank);
     if (!skins[initial.skin] || skins[initial.skin].unlock>initial.prestiges) initial.skin = 0;
   } catch {
     // An invalid save falls back to the starting table.
@@ -277,7 +274,7 @@ function buyTalent(talent) {
   state.talents[talent.id]++;
   sound("buy");
   save();
-  renderVIP();
+  renderUI();
 }
 function renderVIP() {
   const reward = pendingChips();
@@ -336,8 +333,7 @@ vipDialog.addEventListener("close",()=>{
   if (newSkin>=0) remaining.skin = newSkin;
   remaining.coins = remaining.talents.bankroll*20;
   remaining.dice = 1+remaining.talents.dice;
-  remaining.materialBase = remaining.talents.materialStart;
-  remaining.dieMaterials = Array(remaining.dice).fill(remaining.materialBase);
+  remaining.dieMaterials = Array(remaining.dice).fill(remaining.talents.materialStart);
   state = remaining;
   resetTable();
   applySkin();
@@ -390,14 +386,15 @@ function materialOffer() {
   const to = from+1;
   const advanced = state.dieMaterials.filter(rank=>rank>=to).length;
   const requiredRebirths = materialRebirths(to);
+  const needsLicense = to>1 && !state.talents.materialPermit;
   const rosterFactor = 1+.035*Math.max(0,state.dice-6);
   const progressFactor = (1+.08*advanced)*1.095**Math.max(0,advanced-4);
   return {from,to,index:state.dieMaterials.indexOf(from),capped:from===caps.material,
-    advanced,requiredRebirths,locked:state.prestiges<requiredRebirths,
+    advanced,requiredRebirths,needsLicense,locked:needsLicense || state.prestiges<requiredRebirths,
     price:Math.ceil((MATERIAL_PRICES[from] ?? Infinity)*rosterFactor*progressFactor)};
 }
 function materialRebirths(tier) {
-  return Math.max(0,tier-1-state.talents.materialPermit);
+  return Math.max(0,tier-2);
 }
 function upgradeOffer(item) {
   if (item.key==="material") return materialOffer();
@@ -420,10 +417,14 @@ function renderMaterials() {
   }
   const nextTier = offer.locked ? offer.to : offer.to+1;
   const rebirths = materialRebirths(nextTier);
-  rule.textContent = nextTier<=caps.material ?
-    materials[nextTier].name+"の解放条件は、全ダイスが"+materials[nextTier-1].name+"以上"+
-      (rebirths ? "、VIP転生が通算"+rebirths+"回以上です。" : "であることです。") :
-    "1回の購入でダイス1個がネオンレーザーになります。";
+  if (nextTier>caps.material) {
+    rule.textContent = "1回の購入でダイス1個がネオンレーザーになります。";
+    return;
+  }
+  const requirements = ["全ダイスが"+materials[nextTier-1].name+"以上"];
+  if (nextTier>1) requirements.push("材質ライセンスの解放");
+  if (rebirths) requirements.push("VIP転生が通算"+rebirths+"回以上");
+  rule.textContent = materials[nextTier].name+"の解放には"+requirements.join("、")+"が必要です。";
 }
 function renderUI() {
   renderFever();
@@ -440,6 +441,7 @@ function renderUI() {
     const offer = upgradeOffer(item);
     const {capped,locked,price} = offer;
     view.detail.textContent = item.key!=="material" ? item.detail(state) : capped ? "全ダイスが最高材質" :
+      offer.needsLicense ? materials[offer.to].name+"には材質ライセンスが必要" :
       locked ? "VIP転生 "+offer.requiredRebirths+" 回で"+materials[offer.to].name+"を解放" :
       "ダイス #"+(offer.index+1)+" を"+materials[offer.to].name+" ×"+materials[offer.to].multiplier+
       "へ · "+offer.advanced+"/"+state.dice+"個済み";
@@ -649,7 +651,7 @@ function restAngles(face) {
 }
 function spawnDie() {
   const slot = dice.length;
-  state.dieMaterials[slot] ??= state.materialBase;
+  state.dieMaterials[slot] ??= state.talents.materialStart;
   const starts = [[.28,.42],[.65,.33],[.6,.68]];
   const start = state.dice===1 ? [.5,.38] : starts[dice.length];
   const face = start ? [3,5,2][dice.length] : 1+Math.floor(Math.random()*6);
