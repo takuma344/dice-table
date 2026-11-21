@@ -88,7 +88,7 @@
           <div id="materials" class="materials" aria-label="ダイスの材質"></div>
           <p id="material-rule" class="material-rule"></p>
         </div>
-        <section class="vip-group" aria-labelledby="merge-title">
+        <section class="vip-group merge-group" aria-labelledby="merge-title">
           <h3 id="merge-title" tabindex="-1">ダイス合成</h3>
           <p class="material-rule">材質・特殊タイプ・星が同じダイス2個を、次の星のダイス1個にします。上限は★4です。</p>
           <p id="merge-empty" class="material-rule">合成できる組み合わせはありません。</p>
@@ -116,6 +116,11 @@
           <h3 id="vip-skins-title">テーブルスキン</h3>
           <div id="vip-skins" class="vip-skins"></div>
         </section>
+        <section class="vip-group mastery-section" id="mastery-section" aria-labelledby="mastery-title" hidden>
+          <h3 id="mastery-title">ネオンマスタリー</h3>
+          <p class="material-rule">各目標でVIPチップを獲得。全達成でオーロラブラックが解放されます。</p>
+          <div id="mastery-goals"></div>
+        </section>
         <section class="vip-group" aria-labelledby="vip-talents-title">
           <h3 id="vip-talents-title">タレントツリー</h3>
           <div id="vip-talents"></div>
@@ -136,14 +141,6 @@
       <h2 id="reset-title">セーブをリセット</h2>
       <p>コイン、強化、プレイ記録、VIPチップと恒久タレントを初期状態に戻します。</p>
       <div><button value="cancel" autofocus>キャンセル</button><button value="reset" class="danger">リセットする</button></div>
-    </form>
-  </dialog>
-  <dialog id="merge-dialog" aria-labelledby="merge-confirm-title">
-    <form method="dialog">
-      <h2 id="merge-confirm-title">ダイスを合成</h2>
-      <p id="merge-confirm-preview"></p>
-      <p id="merge-confirm-result"></p>
-      <div><button value="cancel" autofocus>キャンセル</button><button value="merge" class="vip-confirm">合成する</button></div>
     </form>
   </dialog>
   <dialog id="vip-dialog" aria-labelledby="vip-title">

@@ -29,6 +29,12 @@ const MAX_STARS = STAR_RANKS.length;
 const SPECIAL_LIMIT = MAX_STARS;
 const FUSION_IMPACT = .40;
 const FUSION_DURATION = .82;
+const MASTERY = [
+  {track:"masteryNeon",name:"ネオンレーザーの★4を作る",target:4,reward:3},
+  {track:"masterySpecial",name:"特殊ダイスの★4を作る",target:4,reward:2},
+  {track:"masteryBurst",name:"1回のフィーバーで8回バースト",target:8,reward:4},
+];
+const ALL_MASTERY = (1<<MASTERY.length)-1;
 const skins = [
   {id:"classic",name:"クラシックグリーン",unlock:0,felt:["#367054","#265b44","#133f33"],inlay:"#d9c48a",
     rail:["#9d6848","#72462f","#9d6441","#78432e","#563220"],lip:["#5d3727","#613827","#47271e","#2b1915"]},
@@ -36,6 +42,8 @@ const skins = [
     rail:["#a77346","#6b3a2a","#925537","#603123","#41211e"],lip:["#77462b","#683529","#462423","#301819"]},
   {id:"cyber",name:"サイバーネオン",unlock:3,felt:["#205c66","#174453","#102c3e"],inlay:"#76ffe0",
     rail:["#48747e","#223b51","#365f69","#25374a","#152637"],lip:["#294455","#243c50","#192d41","#122133"]},
+  {id:"aurora",name:"オーロラブラック",mastery:true,felt:["#254a49","#172b32","#111925"],inlay:"#ffd38e",
+    rail:["#816e50","#2f3540","#43505b","#2a3138","#191f28"],lip:["#454052","#283342","#171d2a","#101721"]},
 ];
 const talents = [
   {id:"bankroll",branch:"スタートダッシュ",icon:"coin",title:"準備金",costs:[1,2,3],
@@ -110,7 +118,8 @@ function normalizeMaterial(rank,fallback = 0) {
 function fresh() {
   return {coins:0,dice:1,dieMaterials:[0],dieSpecials:[null],dieStars:[1],arms:0,speed:0,wave:0,rolls:0,resonances:0,
     best:0,earned:0,seconds:0,muted:false,feverCharge:0,feverLeft:0,runEarned:0,
-    vipChips:0,prestiges:0,skin:0,talents:Object.fromEntries(talents.map(talent=>[talent.id,0])),
+    vipChips:0,prestiges:0,skin:0,feverBurstRolls:0,masteryNeon:0,masterySpecial:0,masteryBurst:0,masteryRewards:0,
+    talents:Object.fromEntries(talents.map(talent=>[talent.id,0])),
     savedAt:Date.now()};
 }
 let storageOK = true;
@@ -150,7 +159,9 @@ function load() {
       installed.set(type,count+1);
       return type;
     });
-    if (!skins[initial.skin] || skins[initial.skin].unlock>initial.prestiges) initial.skin = 0;
+    initial.masteryRewards = Math.min(ALL_MASTERY,initial.masteryRewards);
+    if (!initial.feverLeft) initial.feverBurstRolls = 0;
+    if (!skins[initial.skin] || !skinAvailable(skins[initial.skin],initial)) initial.skin = 0;
   } catch {
     // An invalid save falls back to the starting table.
   }
@@ -165,7 +176,8 @@ let popupGrid, feverGlow;
 let recent = Array.from({length:7},()=>[]);
 let streak = 0, lastCrit = -Infinity, shakeStart = -Infinity, shakeAmplitude = 0;
 let markedDie = null, markedUntil = 0;
-let fusion = null;
+let fusions = [];
+let burstUntil = 0, burstPayout = 0;
 let uiDirty = true;
 let noticeTimer;
 let hiddenAt = document.hidden ? Date.now() : 0;
@@ -191,6 +203,31 @@ function credit(amount) {
   state.runEarned = Math.min(Number.MAX_SAFE_INTEGER,state.runEarned+amount);
   uiDirty = true;
 }
+function skinAvailable(skin,progress = state) {
+  return skin.mastery ? progress.prestiges>=3 && progress.masteryRewards===ALL_MASTERY : progress.prestiges>=skin.unlock;
+}
+function trackMastery(scanDice = true) {
+  if (state.prestiges<3 || state.masteryRewards===ALL_MASTERY) return;
+  if (scanDice) {
+    for (let slot=0;slot<state.dice;slot++) {
+      if (state.dieMaterials[slot]===3) state.masteryNeon = Math.max(state.masteryNeon,state.dieStars[slot]);
+      if (state.dieSpecials[slot]) state.masterySpecial = Math.max(state.masterySpecial,state.dieStars[slot]);
+    }
+  }
+  state.masteryBurst = Math.max(state.masteryBurst,state.feverBurstRolls);
+  let chips = 0;
+  MASTERY.forEach((goal,index)=>{
+    if (state[goal.track]<goal.target || (state.masteryRewards&(1<<index))) return;
+    state.masteryRewards |= 1<<index;
+    chips += goal.reward;
+  });
+  if (!chips) return;
+  state.vipChips = Math.min(Number.MAX_SAFE_INTEGER,state.vipChips+chips);
+  uiDirty = true;
+  save();
+  announce(state.masteryRewards===ALL_MASTERY ?
+    "オーロラブラック解放  ＋"+chips+" VIPチップ" : "ネオンマスタリー達成  ＋"+chips+" VIPチップ");
+}
 function chargeFever(linked,combo,sameWave = false) {
   const charge = 5+3*Math.min(4,linked-1)+Math.min(5,combo-1)+(sameWave ? 3 : 0);
   gainFever(Math.round(charge*(1+.2*state.talents.fever)));
@@ -201,6 +238,7 @@ function gainFever(charge) {
   if (state.feverCharge<100) return;
   state.feverCharge = 0;
   state.feverLeft = FEVER_DURATION;
+  state.feverBurstRolls = 0;
   for (const arm of arms) arm.next = time+Math.max(0,arm.next-time)/2;
   sound("fever");
 }
@@ -210,6 +248,7 @@ function tickFever(dt) {
   if (state.feverLeft>1e-8) return;
   state.feverLeft = 0;
   state.feverCharge = 0;
+  state.feverBurstRolls = 0;
   for (const arm of arms) arm.next = time+Math.max(0,arm.next-time)*2;
   uiDirty = true;
 }
@@ -300,7 +339,6 @@ function renderSpecials() {
       (capped ? "" : " "+format(price)+" コイン"));
   }
 }
-const mergeDialog = byId("merge-dialog");
 const mergeRows = new Map();
 const mergeJump = byId("merge-jump");
 const mergeTabCount = byId("merge-tab-count");
@@ -308,7 +346,6 @@ mergeJump.addEventListener("click",()=>{
   byId("merge-title").scrollIntoView({block:"center",behavior:reducedMotion.matches ? "instant" : "smooth"});
   byId("merge-title").focus({preventScroll:true});
 });
-let pendingMerge = null;
 function mergeKey(die) {
   return [state.dieMaterials[die.slot],state.dieSpecials[die.slot] ?? "normal",state.dieStars[die.slot]].join("/");
 }
@@ -334,18 +371,6 @@ function mergePreview(die) {
   return "配当 ×"+STAR_RANKS[stars-1].pay+" → ×"+STAR_RANKS[next-1].pay+
     " · 着地波 最大"+STAR_RANKS[next-1].targets+"個"+effect;
 }
-function openMerge(key) {
-  const pair = dice.filter(die=>!die.rolling && mergeKey(die)===key).slice(0,2);
-  if (fusion || pair.length!==2 || state.dieStars[pair[0].slot]>=MAX_STARS) return;
-  const [first,second] = pair;
-  const stars = state.dieStars[first.slot];
-  pendingMerge = pair;
-  byId("merge-confirm-preview").textContent = mergeName(first)+" ★"+stars+
-    "（#"+(first.slot+1)+" と #"+(second.slot+1)+"）→ ★"+(stars+1)+" ×1個";
-  byId("merge-confirm-result").textContent = mergePreview(first)+"。ダイス枠が1つ空きます。";
-  mergeDialog.returnValue = "cancel";
-  mergeDialog.showModal();
-}
 function renderMerges() {
   const groups = new Map();
   for (const die of dice) {
@@ -368,22 +393,18 @@ function renderMerges() {
       const row = document.createElement("article");
       row.className = "upgrade merge-option";
       row.innerHTML = '<span class="upgrade-icon merge-icon" aria-hidden="true">★</span><div><h4 class="upgrade-name"></h4>'+
-        '<p class="upgrade-detail"></p></div><button class="buy">確認</button>';
+        '<p class="upgrade-detail"></p></div><button class="buy">合成する</button>';
       const button = row.querySelector("button");
-      button.addEventListener("click",()=>openMerge(key));
-      button.setAttribute("aria-label",mergeName(die)+" ★"+stars+"の合成を確認");
+      button.addEventListener("click",()=>mergeDice(key));
+      button.setAttribute("aria-label",mergeName(die)+" ★"+stars+"を2個合成");
       byId("merge-options").append(row);
       view = {row,title:row.querySelector("h4"),status:row.querySelector("p"),button};
       view.title.textContent = mergeName(die)+" ★"+stars+" → ★"+(stars+1);
       mergeRows.set(key,view);
     }
-    const resting = group.filter(item=>!item.rolling).length;
-    pairs += Math.floor(resting/2);
-    const ready = resting>=2 && !fusion;
-    const status = "所持 "+group.length+" 個 · "+(ready ? mergePreview(die) : fusion ? "合体演出中" : "着地待ち");
+    pairs += Math.floor(group.length/2);
+    const status = "所持 "+group.length+" 個 · "+mergePreview(die);
     if (view.status.textContent!==status) view.status.textContent = status;
-    view.button.disabled = !ready;
-    view.row.classList.toggle("merge-ready",ready);
   }
   byId("merge-empty").hidden = mergeRows.size>0;
   mergeTabCount.hidden = pairs===0;
@@ -395,13 +416,10 @@ function renderMerges() {
     mergeJump.textContent = "★ 合成できるダイス "+count+" 組 →";
   }
 }
-mergeDialog.addEventListener("close",()=>{
-  const pair = pendingMerge;
-  pendingMerge = null;
-  if (mergeDialog.returnValue!=="merge" || !pair) return;
+function mergeDice(key) {
+  const pair = dice.filter(die=>mergeKey(die)===key).slice(0,2);
+  if (pair.length!==2 || state.dieStars[pair[0].slot]>=MAX_STARS) return;
   const [first,second] = pair;
-  if (!pair.every(die=>dice.includes(die) && !die.rolling) || mergeKey(first)!==mergeKey(second) ||
-      state.dieStars[first.slot]>=MAX_STARS) return;
   unlockAudio();
   const inputs = pair.map(die=>({die:{...die},rank:state.dieMaterials[die.slot],
     type:state.dieSpecials[die.slot],stars:state.dieStars[die.slot]}));
@@ -411,33 +429,43 @@ mergeDialog.addEventListener("close",()=>{
   for (const ranks of [state.dieMaterials,state.dieSpecials,state.dieStars]) ranks.splice(removed,1);
   state.dice = dice.length;
   dice.forEach((die,index)=>{die.slot=index;});
+  first.rolling = false;
+  first.z = 0;
+  first.vz = 0;
   first.vx = 0;
   first.vy = 0;
+  first.bounces = 0;
+  first.nextFace = first.face;
+  [first.rx,first.ry] = restAngles(first.face);
+  first.launched = -Infinity;
+  first.fromBlast = false;
   first.manualBatch = null;
   first.echo = null;
   first.trail = [];
   recent = recent.map(matches=>matches.filter(match=>!pair.includes(match.die)));
   beams = beams.filter(beam=>!pair.includes(beam.a) && !pair.includes(beam.b));
+  for (const die of dice) if (die.echo && pair.includes(die.echo.source)) die.echo.source = null;
   for (const wave of waves) {
     wave.hit.delete(second);
     wave.hit.add(first);
+    if (wave.echo && pair.includes(wave.echo.source)) wave.echo.source = null;
   }
   for (const arm of arms) if (arm.sweep && pair.includes(arm.sweep.target)) arm.sweep = null;
   markedDie = first;
   markedUntil = time+1.3;
-  fusion = {die:first,inputs,start:time,impacted:false};
+  fusions = fusions.filter(effect=>!pair.includes(effect.die));
   if (!reducedMotion.matches) {
     first.x = board.x+board.w*.5;
     first.y = board.y+board.h*.5;
   }
-  fusion.x = first.x;
-  fusion.y = first.y;
+  fusions.push({die:first,inputs,start:time,impacted:false,x:first.x,y:first.y});
+  trackMastery();
   sound("merge");
   save();
   renderUI();
   if (document.activeElement===document.body) byId("merge-title").focus({preventScroll:true});
   announce(mergeName(first)+" が★"+stars+"に合成されました");
-});
+}
 materials.forEach(material=>{
   const badge = document.createElement("span");
   badge.className = "material";
@@ -461,7 +489,7 @@ const skinViews = skins.map((skin,index)=>{
   button.style.setProperty("--felt",skin.felt[1]);
   button.innerHTML = '<span class="skin-swatch" aria-hidden="true"></span><span>'+skin.name+'</span><small></small>';
   button.addEventListener("click",()=>{
-    if (skin.unlock>state.prestiges || state.skin===index) return;
+    if (!skinAvailable(skin) || state.skin===index) return;
     state.skin = index;
     applySkin();
     save();
@@ -469,6 +497,14 @@ const skinViews = skins.map((skin,index)=>{
   });
   byId("vip-skins").append(button);
   return button;
+});
+const masteryViews = MASTERY.map(goal=>{
+  const row = document.createElement("article");
+  row.className = "mastery-goal";
+  row.innerHTML = "<strong>"+goal.name+'</strong><span></span><progress max="'+goal.target+
+    '" aria-label="'+goal.name+'"></progress>';
+  byId("mastery-goals").append(row);
+  return {row,value:row.querySelector("span"),progress:row.querySelector("progress")};
 });
 const talentViews = new Map();
 for (const branch of new Set(talents.map(talent=>talent.branch))) {
@@ -520,11 +556,21 @@ function renderVIP() {
   vipButton.disabled = reward===0;
   if (vipDialog.open) byId("vip-confirm-text").textContent = "今回の転生で VIPチップを "+format(reward)+" 枚獲得します。";
   skinViews.forEach((button,index)=>{
-    const locked = skins[index].unlock>state.prestiges;
+    const skin = skins[index];
+    const locked = !skinAvailable(skin);
     const selected = state.skin===index;
     button.disabled = locked;
     button.setAttribute("aria-pressed",String(selected));
-    button.lastElementChild.textContent = locked ? "転生 "+skins[index].unlock+" 回で解放" : selected ? "使用中" : "使用する";
+    button.lastElementChild.textContent = locked ?
+      (skin.mastery ? "マスタリー全達成で解放" : "転生 "+skin.unlock+" 回で解放") : selected ? "使用中" : "使用する";
+  });
+  byId("mastery-section").hidden = state.prestiges<3;
+  MASTERY.forEach((goal,index)=>{
+    const view = masteryViews[index], completed = !!(state.masteryRewards&(1<<index));
+    const current = Math.min(goal.target,state[goal.track]);
+    view.row.classList.toggle("complete",completed);
+    view.progress.value = current;
+    view.value.textContent = completed ? "達成済み" : current+" / "+goal.target+" · ＋"+goal.reward+"チップ";
   });
   for (const talent of talents) {
     const view = talentViews.get(talent.id);
@@ -556,7 +602,8 @@ vipDialog.addEventListener("close",()=>{
   if (!reward) return;
   const old = state;
   const remaining = fresh();
-  for (const key of ["rolls","resonances","best","earned","seconds","muted","skin","talents"]) remaining[key] = old[key];
+  for (const key of ["rolls","resonances","best","earned","seconds","muted","skin","talents",
+    "masteryNeon","masterySpecial","masteryBurst","masteryRewards"]) remaining[key] = old[key];
   remaining.vipChips = Math.min(Number.MAX_SAFE_INTEGER,old.vipChips+reward);
   remaining.prestiges = Math.min(Number.MAX_SAFE_INTEGER,old.prestiges+1);
   const newSkin = skins.findIndex(skin=>skin.unlock>old.prestiges && skin.unlock<=remaining.prestiges);
@@ -566,6 +613,7 @@ vipDialog.addEventListener("close",()=>{
   remaining.dieMaterials = Array(remaining.dice).fill(remaining.talents.materialStart);
   state = remaining;
   resetTable();
+  trackMastery();
   applySkin();
   save();
   renderUI();
@@ -583,6 +631,8 @@ function renderFever() {
   feverStage.classList.toggle("fevers-on",active);
   if (feverView.label.textContent!==label) feverView.label.textContent = label;
   feverView.effect.hidden = !active;
+  const effect = time<burstUntil ? "バースト ×"+burstPayout : "コイン・アーム ×2";
+  if (feverView.effect.textContent!==effect) feverView.effect.textContent = effect;
   if (feverView.value.textContent!==value) {
     feverView.value.textContent = value;
     feverView.progress.setAttribute("aria-valuetext",active ? "残り "+value : value+" 充填");
@@ -706,6 +756,7 @@ function buy(item) {
     markedDie = dice[offer.index];
     markedUntil = time+1.3;
     announce("ダイス #"+(offer.index+1)+" が"+materials[offer.to].name+"に進化");
+    trackMastery();
   } else {
     state[key]++;
   }
@@ -788,13 +839,17 @@ function tone(freq,end,length,volume,type,delay = 0) {
 function sound(type,combo = 1) {
   if (state.muted || !audio || audio.state !== "running") return;
   const now = audio.currentTime;
-  if (now-(lastSound[type] ?? -10) < (type === "crit" ? .18 : .075)) return;
+  if (now-(lastSound[type] ?? -10) < (type==="burst" ? .28 : type === "crit" ? .18 : .075)) return;
   if ((type==="coin" || type==="crit") && now-(lastSound.fever ?? -10)<.36) return;
   lastSound[type] = now;
   if (type === "hit") tone(random(210,330),92,.046,.037,"triangle");
   if (type === "land") tone(random(170,230),72,.058,.045,"triangle");
   if (type === "wave") tone(165,54,.15,.049,"sine");
   if (type === "blast") tone(224,60,.16,.045,"triangle");
+  if (type === "burst") {
+    tone(440,660,.13,.03,"triangle");
+    tone(880,1100,.19,.031,"sine",.065);
+  }
   if (type === "merge") {
     tone(294,430,.34,.025,"sine");
     tone(523,523,.14,.027,"triangle",.28);
@@ -881,7 +936,7 @@ function resize() {
       die.vz *= ratio;
       confine(die,false);
     }
-    if (fusion) {
+    for (const fusion of fusions) {
       move(fusion);
       for (const input of fusion.inputs) move(input.die);
     }
@@ -929,7 +984,9 @@ function spawnArm() {
 function resetTable() {
   dice = []; arms = []; waves = []; beams = []; popups = []; particles = [];
   markedDie = null;
-  fusion = null;
+  fusions = [];
+  burstUntil = 0;
+  burstPayout = 0;
   state.dieMaterials.length = state.dice;
   state.dieSpecials.length = state.dice;
   state.dieStars.length = state.dice;
@@ -938,7 +995,7 @@ function resetTable() {
   for (let i=0;i<state.dice;i++) spawnDie();
   for (let i=0;i<state.arms;i++) spawnArm();
 }
-function isFusing(die) {return fusion?.die===die && !fusion.impacted;}
+function isFusing(die) {return fusions.some(fusion=>fusion.die===die && !fusion.impacted);}
 function confine(die,rebound = true) {
   const padding = unit*17*starStats(die).size;
   const rx = Math.min(padding,board.w*.5), ry = Math.min(padding,board.h*.5);
@@ -971,7 +1028,6 @@ function launch(die, x, y, strength, manual) {
   die.launched = time;
   die.rolling = true;
   die.bounces = 0;
-  uiDirty = true;
   if (manual) sound("hit");
   return true;
 }
@@ -1054,8 +1110,11 @@ function settle(die) {
   candidates.push({die,t:time,batch:die.manualBatch});
   const special = state.dieSpecials[die.slot];
   const star = starStats(die);
+  const blast = special==="blast" ? specialStats("blast",stars) : null;
+  const blastReady = blast && die.face>=blast.face;
+  const blastFired = blastReady && !die.fromBlast && !echo;
   if (!die.fromBlast && !echo) {
-    if (special==="blast" && die.face>=specialStats("blast",stars).face) {
+    if (blastFired) {
       addWave(die,"blast");
       spark(die.x,die.y,["#ff9d63","#ffe0a0"],10);
     } else if (star.targets) {
@@ -1073,12 +1132,25 @@ function settle(die) {
   if (boost.bonus) spark(die.x,die.y,["#90eed0"],4);
   if (boost.heat) gainFever(boost.heat);
   const multiplier = feverMultiplier();
-  const amount = Math.round((base+bonus)*(1+boost.bonus/100)*(multiplier===2 ? 1+(heat?.feverBonus ?? 0) : 1))*multiplier;
+  const highCombo = linked.size>0 && streak>=4;
+  const highStar = stars>=3;
+  const specialActive = blastFired || (heat && die.face>=heat.face) || special==="aura" || boost.bonus>0;
+  const burst = multiplier===2 && ((highStar && (highCombo || specialActive)) || (highCombo && specialActive)) ?
+    (highStar && highCombo && specialActive ? 6 : 4) : 0;
+  const amount = Math.round((base+bonus)*(1+boost.bonus/100)*(multiplier===2 ? 1+(heat?.feverBonus ?? 0) : 1))*(burst || multiplier);
   credit(amount);
+  if (burst) {
+    state.feverBurstRolls++;
+    burstPayout = time<burstUntil ? Math.max(burstPayout,burst) : burst;
+    burstUntil = time+.7;
+    spark(die.x,die.y,["#ffe18b","#a5ffe7"],10);
+    sound("burst");
+    trackMastery(false);
+  }
   sound("land");
   sound("coin");
-  const life = bonus ? 1.1 : .85;
-  placePopup({x:die.x,y:die.y-14*unit,life,total:life,amount,crit:bonus ? streak : 0,fever:multiplier===2});
+  const life = bonus || burst ? 1.1 : .85;
+  placePopup({x:die.x,y:die.y-14*unit,life,total:life,amount,crit:bonus ? streak : 0,fever:multiplier===2,burst});
 }
 function tickDie(die,dt) {
   if (isFusing(die)) return;
@@ -1225,18 +1297,13 @@ function cascadeArm(source) {
   }
 }
 function tickFusion() {
-  if (!fusion) return;
-  const elapsed = time-fusion.start;
-  if (elapsed>=FUSION_IMPACT && !fusion.impacted) {
+  if (!fusions.length) return;
+  for (const fusion of fusions) {
+    if (fusion.impacted || time-fusion.start<FUSION_IMPACT) continue;
     fusion.impacted = true;
-    const {die} = fusion;
-    const star = starStats(die);
-    spark(die.x,die.y,[star.color,"#fff3c6","#ffe29a"],36);
+    spark(fusion.x,fusion.y,[starStats(fusion.die).color,"#fff3c6","#ffe29a"],30);
   }
-  if (elapsed>=FUSION_DURATION) {
-    fusion = null;
-    uiDirty = true;
-  }
+  fusions = fusions.filter(fusion=>time-fusion.start<FUSION_DURATION);
 }
 function step(dt) {
   time += dt;
@@ -1255,7 +1322,7 @@ function step(dt) {
           die.manualBatch = wave.batch;
           die.fromBlast = wave.kind==="blast";
           die.echo = wave.echo;
-          if (wave.echo && Math.random()<wave.echo.chance) die.nextFace = wave.echo.face;
+          if (wave.echo?.source && Math.random()<wave.echo.chance) die.nextFace = wave.echo.face;
           wave.remaining--;
         }
       }
@@ -1306,7 +1373,9 @@ function createFeltPattern() {
 }
 const feltPattern = createFeltPattern();
 function applySkin() {
-  feverStage.dataset.skin = skins[state.skin].id;
+  const skin = skins[state.skin].id;
+  feverStage.dataset.skin = skin;
+  document.querySelector(".panel").dataset.skin = skin;
   if (board) paintTable();
 }
 function paintTable() {
@@ -1650,15 +1719,17 @@ function placePopup(popup) {
   nearest.amount += popup.amount;
   nearest.crit = Math.max(nearest.crit,popup.crit);
   nearest.fever ||= popup.fever;
+  nearest.burst = Math.max(nearest.burst ?? 0,popup.burst ?? 0);
   nearest.life = Math.max(nearest.life,.4);
 }
 function drawPopup(popup) {
   const age=popup.total-popup.life;
   const cell = popupCell(popup.slot);
   const maxWidth = Math.max(1,popupGrid.w-7);
-  const amountSize = Math.min(popupGrid.h*.36,Math.max(13,(popup.crit ? 17 : 15)*unit));
+  const annotated = popup.crit || popup.burst;
+  const amountSize = Math.min(popupGrid.h*.36,Math.max(13,(annotated ? 17 : 15)*unit));
   const comboSize = Math.min(popupGrid.h*.26,Math.max(10,11*unit));
-  const x=cell.x, y=cell.y-popupGrid.h*(age/popup.total*.14+(popup.crit ? .11 : 0));
+  const x=cell.x, y=cell.y-popupGrid.h*(age/popup.total*.14+(annotated ? .11 : 0));
   ctx.globalAlpha=clamp(popup.life/.23,0,1);
   ctx.textAlign="center";
   ctx.textBaseline="middle";
@@ -1667,10 +1738,11 @@ function drawPopup(popup) {
   ctx.font="800 "+amountSize+"px 'Segoe UI',sans-serif";
   const label="＋"+short(popup.amount);
   ctx.strokeText(label,x,y,maxWidth);
-  ctx.fillStyle=popup.fever ? "#fff0ad" : popup.crit ? "#c7ffcc" : "#ffe4a1";
+  ctx.fillStyle=popup.burst ? "#ffe48b" : popup.fever ? "#fff0ad" : popup.crit ? "#c7ffcc" : "#ffe4a1";
   ctx.fillText(label,x,y,maxWidth);
-  if (popup.crit) {
-    const combo="共鳴クリティカル"+(popup.crit>1 ? " ×"+popup.crit : "");
+  if (annotated) {
+    const combo=popup.burst ? "バースト ×"+popup.burst+(popup.crit ? " · 共鳴 ×"+popup.crit : "") :
+      "共鳴クリティカル"+(popup.crit>1 ? " ×"+popup.crit : "");
     const comboY = y+(amountSize+comboSize)*.64;
     ctx.font="750 "+comboSize+"px 'Segoe UI',sans-serif";
     ctx.strokeText(combo,x,comboY,maxWidth);
@@ -1682,7 +1754,8 @@ function tableShake() {
   if (reducedMotion.matches) return {x:0,y:0};
   const elapsed = time-shakeStart;
   const amplitude = elapsed>=SHAKE_DURATION ? 0 : shakeAmplitude*ease(clamp(elapsed/.03,0,1))*(1-elapsed/SHAKE_DURATION)**2;
-  const impact = fusion ? time-fusion.start-FUSION_IMPACT : -1;
+  const latestImpact = fusions.findLast(fusion=>fusion.impacted);
+  const impact = latestImpact ? time-latestImpact.start-FUSION_IMPACT : -1;
   const kick = impact>=0 && impact<.24 ? 3.1*Math.sin(impact*55)*(1-impact/.24)**2 : 0;
   const x = amplitude ? Math.sin(elapsed*62)*amplitude : 0;
   const y = amplitude ? Math.sin(elapsed*48)*amplitude*.55 : 0;
@@ -1722,8 +1795,7 @@ function drawStarTrail(die) {
   }
   ctx.restore();
 }
-function drawFusion() {
-  if (!fusion) return;
+function drawFusion(fusion) {
   const elapsed = time-fusion.start;
   const {x,y} = fusion;
   const star = starStats(fusion.die);
@@ -1732,7 +1804,8 @@ function drawFusion() {
     const t = ease(elapsed/FUSION_IMPACT);
     for (const input of fusion.inputs) {
       const die = input.die;
-      const moving = {...die,x:die.x+(x-die.x)*t,y:die.y+(y-die.y)*t,z:Math.sin(t*Math.PI)*19*unit,rz:die.rz+t*1.6};
+      const moving = {...die,x:die.x+(x-die.x)*t,y:die.y+(y-die.y)*t,
+        z:die.z*(1-t)+Math.sin(t*Math.PI)*19*unit,rz:die.rz+t*1.6};
       ctx.beginPath();ctx.moveTo(die.x,die.y);ctx.lineTo(moving.x,moving.y-moving.z*.51);
       ctx.lineWidth = 1.7*unit;
       ctx.strokeStyle = star.color+"8c";
@@ -1743,14 +1816,11 @@ function drawFusion() {
   }
   const t = clamp((elapsed-FUSION_IMPACT)/(FUSION_DURATION-FUSION_IMPACT),0,1);
   ctx.save();
-  if (!reducedMotion.matches) {
-    ctx.globalAlpha = .15*(1-t)**3;
-    ctx.fillStyle = star.color;
-    ctx.fillRect(0,0,width,height);
-    ctx.globalAlpha = .8*(1-t);
-  } else ctx.globalAlpha = .56*(1-t);
+  ctx.globalAlpha = (reducedMotion.matches ? .56 : .8)*(1-t);
   const radius = Math.min(board.w,board.h)*(reducedMotion.matches ? .11 : .05+.28*t);
+  ctx.fillStyle = star.color+"29";
   ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);
+  ctx.fill();
   ctx.strokeStyle = star.color;
   ctx.lineWidth = 3*unit;
   ctx.stroke();
@@ -1823,7 +1893,7 @@ function draw() {
     ctx.fillText("#"+(die.slot+1),die.x-die.z*.10,y-26*unit);
     ctx.restore();
   }
-  drawFusion();
+  for (const fusion of fusions) drawFusion(fusion);
   for (const p of particles) if (p.life>0) {
     ctx.globalAlpha=clamp(p.life/p.total,0,1);
     diamond(ctx,p.x,p.y,p.size,p.color);
@@ -1907,7 +1977,7 @@ canvas.addEventListener("pointerup",drag);
 function release(event) {if (pointer?.id===event.pointerId) pointer=null;}
 for (const event of ["pointerup","pointercancel","lostpointercapture"]) canvas.addEventListener(event,release);
 document.addEventListener("keydown",event=>{
-  if (event.repeat || dialog.open || vipDialog.open || mergeDialog.open || (event.code!=="Space" && !(event.key==="Enter" && event.target===canvas))) return;
+  if (event.repeat || dialog.open || vipDialog.open || (event.code!=="Space" && !(event.key==="Enter" && event.target===canvas))) return;
   if (event.target!==canvas && (event.target!==document.body || !matchMedia("(pointer:fine)").matches)) return;
   event.preventDefault();
   unlockAudio();
@@ -1917,6 +1987,7 @@ document.addEventListener("keydown",event=>{
 applySkin();
 resize();
 resetTable();
+trackMastery();
 draw();
 updateSound();
 renderUI();
@@ -1928,12 +1999,10 @@ let previous=performance.now(), carry=0, lastUI=0, lastFeverUI=0;
 function frame(now) {
   if (!document.hidden) {
     if (resizePending) resize();
-    if (!mergeDialog.open) {
-      carry += Math.min(.06,(now-previous)/1000);
-      while (carry>=1/120) {
-        step(1/120);
-        carry-=1/120;
-      }
+    carry += Math.min(.06,(now-previous)/1000);
+    while (carry>=1/120) {
+      step(1/120);
+      carry-=1/120;
     }
     draw();
     if (uiDirty || (!byId("stats").hidden && now-lastUI>500)) {
