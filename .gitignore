@@ -1,0 +1,23 @@
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+
+# Local editor, OS and test artifacts
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+.taste-skill/
+playwright-report/
+test-results/
+*.log
+*.tmp
+*.swp
+*~

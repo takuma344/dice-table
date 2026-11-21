@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ja" data-type="software">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#102822">
+  <meta name="page-type" content="software">
+  <meta name="site-kind" content="gaming">
+  <meta name="description" content="ダイスを弾き、共鳴でコインを稼ぎ、ロボットアームで自動化する放置ゲーム。">
+  <meta property="og:title" content="幸運のダイステーブル">
+  <meta property="og:description" content="ダイスを弾いて、あなただけのテーブルを育てよう。">
+  <title>幸運のダイステーブル | Dice Table</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="game.js" defer></script>
+</head>
+<body>
+  <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-die" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 8h.01M12 12h.01M16 16h.01" stroke-width="3"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM15 9q3 3 0 6m3-9q6 6 0 12"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM16 9l6 6m0-6-6 6"/></symbol>
+    <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m12 7 3 5-3 5-3-5z"/></symbol>
+    <symbol id="i-gem" viewBox="0 0 24 24"><path d="m3 9 4-5h10l4 5-9 11zM3 9h18m-13 0 4 11 4-11M8 9l2-5m6 5-2-5"/></symbol>
+    <symbol id="i-arm" viewBox="0 0 24 24"><path d="M4 20h16M7 20v-3l4-5m3 2 3 6M9 9l4-5m2 3 4 2m0 0 2-2m-2 2v3"/><circle cx="12" cy="12" r="2.6"/><circle cx="14" cy="5" r="1.7"/></symbol>
+    <symbol id="i-speed" viewBox="0 0 24 24"><path d="m13 2-8 12h6l-1 8 9-12h-6z"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8 8a5.7 5.7 0 0 0 0 8m8-8a5.7 5.7 0 0 1 0 8M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16M8 15v-3m5 3V8m5 7V5"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 11a8 8 0 1 1 2 7M4 5v6h6"/></symbol>
+    <symbol id="i-hand" viewBox="0 0 24 24"><path d="M9 13V5a1.5 1.5 0 0 1 3 0v6l4-.5a3 3 0 0 1 3 3V16a5 5 0 0 1-5 5h-1a5 5 0 0 1-4-2l-4-5a1.5 1.5 0 0 1 2-2l2 1zM5 6V4m11 1 1-2"/></symbol>
+  </svg>
+  <main class="game">
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand-icon"><svg><use href="#i-die"/></svg></span>
+        <div><h1>幸運のダイステーブル</h1><span class="wordmark">DICE TABLE</span></div>
+      </div>
+      <div class="header-tools">
+        <span id="save-status" class="save-status"><i></i><span>自動セーブ</span></span>
+        <button id="sound" class="sound" aria-label="音をミュート" aria-pressed="false"><svg><use href="#i-sound"/></svg></button>
+      </div>
+    </header>
+
+    <section class="stage" aria-label="ダイステーブル" data-enter>
+      <div class="stage-top">
+        <div class="balance">
+          <span class="balance-icon"><svg><use href="#i-coin"/></svg></span>
+          <div><span class="metric-label">所持コイン</span><strong id="coins">0</strong></div>
+        </div>
+        <div class="stage-stats">
+          <div><span class="metric-label">ダイス</span><strong id="dice-count">1 <small>/ 40</small></strong></div>
+          <div><span class="metric-label">自動アーム</span><strong id="arm-count">0</strong></div>
+        </div>
+      </div>
+      <div class="fever-meter" id="fever-meter">
+        <span class="fever-caption" aria-live="polite"><span id="fever-label">フィーバー</span><small id="fever-effect" hidden>コイン・アーム ×2</small></span>
+        <div id="fever-progress" class="fever-track" role="progressbar" aria-labelledby="fever-label"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="fever-fill"></span></div>
+        <strong id="fever-value">0%</strong>
+      </div>
+      <div class="playfield">
+        <canvas id="table" tabindex="0" role="button" aria-label="ダイスを振る" aria-describedby="play-hint">ダイスを振るには Canvas 対応ブラウザが必要です。</canvas>
+        <div id="notice" class="notice" role="status"></div>
+      </div>
+      <div class="stage-bottom">
+        <p id="play-hint"><svg><use href="#i-hand"/></svg><span class="direct-hint mouse-hint">ダイスをクリックして振る</span><span class="direct-hint touch-hint">ダイスをタップして振る</span><span class="wave-hint mouse-hint">ダイスをクリック・ドラッグして衝撃波を起こす</span><span class="wave-hint touch-hint">ダイスをタップ・スワイプして衝撃波を起こす</span></p>
+        <span class="key-hint"><kbd>SPACE</kbd> でも振れます</span>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="アップグレード、VIP、統計">
+      <div class="tabs" role="tablist" aria-label="パネル">
+        <button id="shop-tab" role="tab" aria-selected="true" aria-controls="shop" data-tab="shop"><svg><use href="#i-speed"/></svg>アップグレード</button>
+        <button id="vip-tab" role="tab" aria-selected="false" aria-controls="vip" data-tab="vip" tabindex="-1"><svg><use href="#i-gem"/></svg>VIP</button>
+        <button id="stats-tab" role="tab" aria-selected="false" aria-controls="stats" data-tab="stats" tabindex="-1"><svg><use href="#i-chart"/></svg>統計</button>
+      </div>
+      <section id="shop" class="panel-content" role="tabpanel" aria-labelledby="shop-tab">
+        <div class="panel-heading"><h2>テーブル強化</h2><p>ダイスを増やし、アームにロールを任せよう。</p></div>
+        <div id="upgrades" class="upgrades"></div>
+        <div class="tier">
+          <div class="tier-heading"><span>マテリアル進化</span><strong id="tier-multiplier">×1</strong></div>
+          <div id="materials" class="materials" aria-label="ダイスの材質"></div>
+        </div>
+      </section>
+      <section id="vip" class="panel-content" role="tabpanel" aria-labelledby="vip-tab" hidden>
+        <div class="panel-heading"><h2>VIPテーブル</h2><p>転生でチップを獲得し、恒久タレントを解放。</p></div>
+        <dl class="vip-summary">
+          <div><dt>VIPチップ</dt><dd id="vip-chips">0</dd></div>
+          <div><dt>VIP転生回数</dt><dd id="vip-count">0</dd></div>
+        </dl>
+        <div class="vip-prestige">
+          <div><h3>VIP転生</h3><strong id="vip-reward">+0 チップ</strong></div>
+          <p id="vip-condition"></p>
+          <progress id="vip-progress" aria-label="次のVIPチップ獲得までの進捗" max="50000" value="0"></progress>
+          <button id="vip-rebirth" class="buy" disabled>VIP転生する</button>
+        </div>
+        <section class="vip-group" aria-labelledby="vip-skins-title">
+          <h3 id="vip-skins-title">テーブルスキン</h3>
+          <div id="vip-skins" class="vip-skins"></div>
+        </section>
+        <section class="vip-group" aria-labelledby="vip-talents-title">
+          <h3 id="vip-talents-title">タレントツリー</h3>
+          <div id="vip-talents"></div>
+        </section>
+      </section>
+      <section id="stats" class="panel-content" role="tabpanel" aria-labelledby="stats-tab" hidden>
+        <div class="panel-heading"><h2>プレイ統計</h2><p>0.8 秒以内に同じ目が着地すると共鳴が発生します。</p></div>
+        <dl id="records" class="records"></dl>
+      </section>
+      <footer class="panel-footer">
+        <span id="storage-label">端末内に自動保存</span>
+        <button id="reset"><svg><use href="#i-reset"/></svg>データをリセット</button>
+      </footer>
+    </aside>
+  </main>
+  <dialog id="reset-dialog" aria-labelledby="reset-title">
+    <form method="dialog">
+      <h2 id="reset-title">セーブをリセット</h2>
+      <p>コイン、強化、プレイ記録、VIPチップと恒久タレントを初期状態に戻します。</p>
+      <div><button value="cancel" autofocus>キャンセル</button><button value="reset" class="danger">リセットする</button></div>
+    </form>
+  </dialog>
+  <dialog id="vip-dialog" aria-labelledby="vip-title">
+    <form method="dialog">
+      <h2 id="vip-title">VIPテーブル転生</h2>
+      <p id="vip-confirm-text"></p>
+      <p>所持コイン、ダイス、材質、アーム、衝撃波、フィーバーをリセットします。VIPチップ、恒久タレント、スキンと累計記録は引き継ぎます。</p>
+      <div><button value="cancel" autofocus>キャンセル</button><button value="rebirth" class="vip-confirm">転生する</button></div>
+    </form>
+  </dialog>
+</body>
+</html>
