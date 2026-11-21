@@ -68,7 +68,7 @@
 
     <aside class="panel" aria-label="アップグレード、VIP、統計">
       <div class="tabs" role="tablist" aria-label="パネル">
-        <button id="shop-tab" role="tab" aria-selected="true" aria-controls="shop" data-tab="shop"><svg><use href="#i-speed"/></svg>アップグレード</button>
+        <button id="shop-tab" role="tab" aria-selected="true" aria-controls="shop" data-tab="shop"><svg><use href="#i-speed"/></svg>アップグレード<span id="merge-tab-count" class="merge-count" hidden></span></button>
         <button id="vip-tab" role="tab" aria-selected="false" aria-controls="vip" data-tab="vip" tabindex="-1"><svg><use href="#i-gem"/></svg>VIP</button>
         <button id="stats-tab" role="tab" aria-selected="false" aria-controls="stats" data-tab="stats" tabindex="-1"><svg><use href="#i-chart"/></svg>統計</button>
       </div>
@@ -81,6 +81,7 @@
             <p id="goal-reason"></p>
           </div>
         </div>
+        <button id="merge-jump" class="merge-jump" hidden></button>
         <div id="upgrades" class="upgrades"></div>
         <div class="tier">
           <div class="tier-heading"><span>ダイスの材質内訳</span></div>

@@ -19,10 +19,16 @@ const SPECIAL_DICE = {
   aura:{name:"増幅ダイス",mark:"増",icon:"gem",color:"#90eed0",cost:950,detail:"静止中、近くの他のダイスの配当を25%増やす"},
   heat:{name:"熱気ダイス",mark:"熱",icon:"speed",color:"#ffe08a",cost:850,detail:"出目4〜6でフィーバーゲージを6ポイント加算"},
 };
-const AURA_RANGE = .20;
-const STAR_MULTIPLIERS = [1,2.35,5.5,13];
-const MAX_STARS = STAR_MULTIPLIERS.length;
+const STAR_RANKS = [
+  {pay:1,size:1,pulse:0,targets:0,match:0,heat:0,color:"#e5cc96"},
+  {pay:4,size:1.13,pulse:.125,targets:1,match:.22,heat:4,color:"#ffe28d"},
+  {pay:14,size:1.26,pulse:.205,targets:2,match:.36,heat:8,color:"#a4ffe4"},
+  {pay:48,size:1.40,pulse:.29,targets:4,match:.52,heat:14,color:"#ffd296"},
+];
+const MAX_STARS = STAR_RANKS.length;
 const SPECIAL_LIMIT = MAX_STARS;
+const FUSION_IMPACT = .40;
+const FUSION_DURATION = .82;
 const skins = [
   {id:"classic",name:"クラシックグリーン",unlock:0,felt:["#367054","#265b44","#133f33"],inlay:"#d9c48a",
     rail:["#9d6848","#72462f","#9d6441","#78432e","#563220"],lip:["#5d3727","#613827","#47271e","#2b1915"]},
@@ -86,16 +92,17 @@ function armWaveRange(level) {return .17+.015*Math.max(0,level-1);}
 function feverMultiplier() {return state.feverLeft>0 ? 2 : 1;}
 function armInterval() {return interval(state.speed)/feverMultiplier();}
 function rollValue(face,rank = 0,stars = 1) {
-  return Math.round(face*materials[rank].multiplier*STAR_MULTIPLIERS[stars-1]*(1+.2*state.talents.income));
+  return Math.round(face*materials[rank].multiplier*STAR_RANKS[stars-1].pay*(1+.2*state.talents.income));
 }
+function starStats(die) {return STAR_RANKS[state.dieStars[die.slot]-1];}
 function normalizeStars(stars) {
   return Number.isFinite(stars) ? clamp(Math.floor(stars),1,MAX_STARS) : 1;
 }
 function specialStats(type,stars) {
   const level = stars-1;
-  if (type==="blast") return {range:.16+.006*state.wave+.04*level,strength:.85+.045*level};
-  if (type==="aura") return {range:AURA_RANGE+.035*level,bonus:25+12*level};
-  return {charge:6+3*level};
+  if (type==="blast") return {range:[.16,.235,.32,.395][level]+.006*state.wave,strength:.85+.08*level,face:6-Math.max(1,stars)};
+  if (type==="aura") return {range:[.20,.265,.335,.41][level],bonus:[25,60,110,180][level],heat:[0,0,2,4][level]};
+  return {charge:[6,13,22,34][level],face:5-stars,feverBonus:[0,0,.30,.55][level]};
 }
 function normalizeMaterial(rank,fallback = 0) {
   return Number.isFinite(rank) ? clamp(Math.floor(rank),0,caps.material) : fallback;
@@ -158,6 +165,7 @@ let popupGrid, feverGlow;
 let recent = Array.from({length:7},()=>[]);
 let streak = 0, lastCrit = -Infinity, shakeStart = -Infinity, shakeAmplitude = 0;
 let markedDie = null, markedUntil = 0;
+let fusion = null;
 let uiDirty = true;
 let noticeTimer;
 let hiddenAt = document.hidden ? Date.now() : 0;
@@ -294,6 +302,12 @@ function renderSpecials() {
 }
 const mergeDialog = byId("merge-dialog");
 const mergeRows = new Map();
+const mergeJump = byId("merge-jump");
+const mergeTabCount = byId("merge-tab-count");
+mergeJump.addEventListener("click",()=>{
+  byId("merge-title").scrollIntoView({block:"center",behavior:reducedMotion.matches ? "instant" : "smooth"});
+  byId("merge-title").focus({preventScroll:true});
+});
 let pendingMerge = null;
 function mergeKey(die) {
   return [state.dieMaterials[die.slot],state.dieSpecials[die.slot] ?? "normal",state.dieStars[die.slot]].join("/");
@@ -308,17 +322,21 @@ function mergePreview(die) {
   const next = stars+1;
   const percent = range=>Math.round(range*1000)/10+"%";
   let effect = "";
-  if (type==="blast") effect = " · 爆裂半径 "+percent(specialStats(type,stars).range)+" → "+percent(specialStats(type,next).range);
+  if (type==="blast") {
+    const before = specialStats(type,stars), after = specialStats(type,next);
+    effect = " · 爆裂半径 "+percent(before.range)+" → "+percent(after.range)+" · 出目"+after.face+"以上で発動";
+  }
   if (type==="aura") {
     const before = specialStats(type,stars), after = specialStats(type,next);
     effect = " · 増幅 ＋"+before.bonus+"% → ＋"+after.bonus+"% · 半径 "+percent(before.range)+" → "+percent(after.range);
   }
   if (type==="heat") effect = " · 充填 ＋"+specialStats(type,stars).charge+" → ＋"+specialStats(type,next).charge+" pt";
-  return "星の配当倍率 ×"+STAR_MULTIPLIERS[stars-1]+" → ×"+STAR_MULTIPLIERS[next-1]+effect;
+  return "配当 ×"+STAR_RANKS[stars-1].pay+" → ×"+STAR_RANKS[next-1].pay+
+    " · 着地波 最大"+STAR_RANKS[next-1].targets+"個"+effect;
 }
 function openMerge(key) {
   const pair = dice.filter(die=>!die.rolling && mergeKey(die)===key).slice(0,2);
-  if (pair.length!==2 || state.dieStars[pair[0].slot]>=MAX_STARS) return;
+  if (fusion || pair.length!==2 || state.dieStars[pair[0].slot]>=MAX_STARS) return;
   const [first,second] = pair;
   const stars = state.dieStars[first.slot];
   pendingMerge = pair;
@@ -341,6 +359,7 @@ function renderMerges() {
     view.row.remove();
     mergeRows.delete(key);
   }
+  let pairs = 0;
   for (const [key,group] of groups) {
     if (group.length<2) continue;
     const die = group[0], stars = state.dieStars[die.slot];
@@ -358,12 +377,23 @@ function renderMerges() {
       view.title.textContent = mergeName(die)+" ★"+stars+" → ★"+(stars+1);
       mergeRows.set(key,view);
     }
-    const ready = group.filter(item=>!item.rolling).length>=2;
-    const status = "所持 "+group.length+" 個 · "+(ready ? mergePreview(die) : "着地待ち");
+    const resting = group.filter(item=>!item.rolling).length;
+    pairs += Math.floor(resting/2);
+    const ready = resting>=2 && !fusion;
+    const status = "所持 "+group.length+" 個 · "+(ready ? mergePreview(die) : fusion ? "合体演出中" : "着地待ち");
     if (view.status.textContent!==status) view.status.textContent = status;
     view.button.disabled = !ready;
+    view.row.classList.toggle("merge-ready",ready);
   }
   byId("merge-empty").hidden = mergeRows.size>0;
+  mergeTabCount.hidden = pairs===0;
+  mergeJump.hidden = pairs===0;
+  const count = String(pairs);
+  if (mergeTabCount.textContent!==count) {
+    mergeTabCount.textContent = count;
+    mergeTabCount.setAttribute("aria-label","合成可能 "+count+" 組");
+    mergeJump.textContent = "★ 合成できるダイス "+count+" 組 →";
+  }
 }
 mergeDialog.addEventListener("close",()=>{
   const pair = pendingMerge;
@@ -373,6 +403,8 @@ mergeDialog.addEventListener("close",()=>{
   if (!pair.every(die=>dice.includes(die) && !die.rolling) || mergeKey(first)!==mergeKey(second) ||
       state.dieStars[first.slot]>=MAX_STARS) return;
   unlockAudio();
+  const inputs = pair.map(die=>({die:{...die},rank:state.dieMaterials[die.slot],
+    type:state.dieSpecials[die.slot],stars:state.dieStars[die.slot]}));
   const stars = ++state.dieStars[first.slot];
   const removed = second.slot;
   dice.splice(removed,1);
@@ -382,6 +414,8 @@ mergeDialog.addEventListener("close",()=>{
   first.vx = 0;
   first.vy = 0;
   first.manualBatch = null;
+  first.echo = null;
+  first.trail = [];
   recent = recent.map(matches=>matches.filter(match=>!pair.includes(match.die)));
   beams = beams.filter(beam=>!pair.includes(beam.a) && !pair.includes(beam.b));
   for (const wave of waves) {
@@ -391,7 +425,13 @@ mergeDialog.addEventListener("close",()=>{
   for (const arm of arms) if (arm.sweep && pair.includes(arm.sweep.target)) arm.sweep = null;
   markedDie = first;
   markedUntil = time+1.3;
-  spark(first.x,first.y,["#ffe08a","#fff3c6","#90eed0"],20);
+  fusion = {die:first,inputs,start:time,impacted:false};
+  if (!reducedMotion.matches) {
+    first.x = board.x+board.w*.5;
+    first.y = board.y+board.h*.5;
+  }
+  fusion.x = first.x;
+  fusion.y = first.y;
   sound("merge");
   save();
   renderUI();
@@ -621,8 +661,8 @@ function renderUI() {
   if (!byId("shop").hidden) {
     renderGoal();
     renderSpecials();
-    renderMerges();
   }
+  renderMerges();
   if (!byId("vip").hidden || vipDialog.open) renderVIP();
   byId("coins").textContent = short(state.coins);
   byId("coins").title = format(state.coins);
@@ -756,8 +796,10 @@ function sound(type,combo = 1) {
   if (type === "wave") tone(165,54,.15,.049,"sine");
   if (type === "blast") tone(224,60,.16,.045,"triangle");
   if (type === "merge") {
-    tone(523,523,.18,.034,"triangle");
-    tone(784,784,.27,.039,"sine",.065);
+    tone(294,430,.34,.025,"sine");
+    tone(523,523,.14,.027,"triangle",.28);
+    tone(784,784,.23,.038,"sine",.39);
+    tone(1047,1047,.31,.031,"triangle",.43);
   }
   if (type === "coin" || type === "buy") {
     tone(720,880,.082,.03,"sine");
@@ -832,11 +874,16 @@ function resize() {
     }
     for (const die of dice) {
       move(die);
+      die.trail = [];
       die.z *= ratio;
       die.vx *= ratio;
       die.vy *= ratio;
       die.vz *= ratio;
       confine(die,false);
+    }
+    if (fusion) {
+      move(fusion);
+      for (const input of fusion.inputs) move(input.die);
     }
     for (const arm of arms) if (arm.sweep) move(arm.sweep);
     for (const point of [...waves,...particles,...popups]) move(point);
@@ -882,6 +929,7 @@ function spawnArm() {
 function resetTable() {
   dice = []; arms = []; waves = []; beams = []; popups = []; particles = [];
   markedDie = null;
+  fusion = null;
   state.dieMaterials.length = state.dice;
   state.dieSpecials.length = state.dice;
   state.dieStars.length = state.dice;
@@ -890,8 +938,10 @@ function resetTable() {
   for (let i=0;i<state.dice;i++) spawnDie();
   for (let i=0;i<state.arms;i++) spawnArm();
 }
+function isFusing(die) {return fusion?.die===die && !fusion.impacted;}
 function confine(die,rebound = true) {
-  const rx = Math.min(unit*17,board.w*.5), ry = Math.min(unit*17,board.h*.5);
+  const padding = unit*17*starStats(die).size;
+  const rx = Math.min(padding,board.w*.5), ry = Math.min(padding,board.h*.5);
   const x = clamp(die.x,board.x+rx,board.x+board.w-rx);
   const y = clamp(die.y,board.y+ry,board.y+board.h-ry);
   const hitX = rebound && (die.x-x)*die.vx>0;
@@ -903,7 +953,7 @@ function confine(die,rebound = true) {
   die.y = y;
 }
 function launch(die, x, y, strength, manual) {
-  if (die.rolling || time-die.launched < .19) return false;
+  if (die.rolling || isFusing(die) || time-die.launched < .19) return false;
   const angle = Math.atan2(die.y-y,die.x-x)+random(-.34,.34);
   const impulse = random(63,122)*unit*strength;
   die.vx = die.vx*.21+Math.cos(angle)*impulse;
@@ -916,6 +966,8 @@ function launch(die, x, y, strength, manual) {
   die.nextFace = 1+Math.floor(Math.random()*6);
   die.manualBatch = null;
   die.fromBlast = false;
+  die.echo = null;
+  die.trail = [];
   die.launched = time;
   die.rolling = true;
   die.bounces = 0;
@@ -927,11 +979,15 @@ function addWave(source,kind = "manual") {
   const batch = kind==="manual" ? Symbol() : null;
   if (batch) source.manualBatch = batch;
   const blast = kind==="blast" ? specialStats("blast",state.dieStars[source.slot]) : null;
-  const range = blast?.range ?? (kind==="arm" ? armWaveRange(state.wave) : waveRange(state.wave));
-  const strength = blast?.strength ?? (kind==="arm" ? .82+.033*state.wave : 1+.062*state.wave);
-  waves.push({x:source.x,y:source.y,range,t:0,life:.34,strength,batch,kind,hit:new Set([source])});
+  const star = starStats(source);
+  const range = blast?.range ?? (kind==="star" ? star.pulse : kind==="arm" ? armWaveRange(state.wave) : waveRange(state.wave));
+  const strength = blast?.strength ?? (kind==="star" ? .72 : kind==="arm" ? .82+.033*state.wave : 1+.062*state.wave);
+  const echo = (kind==="star" || kind==="blast") && star.targets ?
+    {source,face:source.face,chance:star.match,until:time+1.9} : null;
+  const remaining = kind==="star" ? star.targets : Infinity;
+  waves.push({x:source.x,y:source.y,range,t:0,life:.34,strength,batch,kind,echo,remaining,hit:new Set([source])});
   if (waves.length > 24) waves.shift();
-  if (kind!=="arm") sound(kind==="blast" ? "blast" : "wave");
+  if (kind==="blast" || kind==="manual") sound(kind==="blast" ? "blast" : "wave");
 }
 function waveRadius(wave) {
   const t = clamp(wave.t/wave.life,0,1);
@@ -953,12 +1009,12 @@ function requestShake(linked,combo) {
   shakeAmplitude = Math.min(2.5,(1.5+.17*Math.min(4,linked)+.12*Math.min(5,combo-1))*unit);
 }
 function auraBonus(die) {
-  let best = 0;
+  let best = {bonus:0,heat:0};
   const span = Math.min(board.w,board.h);
   for (const aura of dice) {
     if (aura===die || aura.rolling || state.dieSpecials[aura.slot]!=="aura") continue;
-    const {range,bonus} = specialStats("aura",state.dieStars[aura.slot]);
-    if (Math.hypot(die.x-aura.x,die.y-aura.y)<=span*range) best = Math.max(best,bonus);
+    const stats = specialStats("aura",state.dieStars[aura.slot]);
+    if (stats.bonus>best.bonus && Math.hypot(die.x-aura.x,die.y-aura.y)<=span*stats.range) best = stats;
   }
   return best;
 }
@@ -974,37 +1030,50 @@ function settle(die) {
   const candidates = recent[die.face];
   while (candidates.length && time-candidates[0].t > RESONANCE_WINDOW) candidates.shift();
   let bonus = 0;
-  const linked = [...new Set(candidates.map(other=>other.die))].filter(other=>other!==die);
-  if (linked.length) {
+  const linked = new Set(candidates.map(other=>other.die));
+  linked.delete(die);
+  const echo = die.echo;
+  const echoMatch = echo?.face===die.face && time<=echo.until && dice.includes(echo.source);
+  if (echoMatch) linked.add(echo.source);
+  if (linked.size) {
     streak = time-lastCrit <= RESONANCE_WINDOW ? streak+1 : 1;
     lastCrit = time;
     state.resonances++;
     state.best = Math.max(state.best,streak);
     const sameWave = !!die.manualBatch && candidates.some(other=>other.die!==die && other.batch===die.manualBatch);
-    const resonanceRate = .60+.20*Math.min(4,linked.length)+.12*Math.min(5,streak-1)+(sameWave ? .35 : 0);
+    const resonanceRate = .60+.20*Math.min(4,linked.size)+.12*Math.min(5,streak-1)+(sameWave ? .35 : 0)+(echoMatch ? .20 : 0);
     bonus = Math.round(base*resonanceRate*(1+.25*state.talents.resonance));
-    for (const other of linked.slice(-4)) beams.push({a:other,b:die,life:.49,phase:random(0,6)});
-    requestShake(linked.length,streak);
-    chargeFever(linked.length,streak,sameWave);
+    for (const other of Array.from(linked).slice(-4)) beams.push({a:other,b:die,life:.49,phase:random(0,6)});
+    requestShake(linked.size,streak);
+    chargeFever(linked.size,streak,sameWave);
     sound("crit",streak);
-    spark(die.x,die.y,["#c5ffdd","#fcf2b4","#77f8c7"],7+Math.min(4,linked.length));
+    spark(die.x,die.y,["#c5ffdd","#fcf2b4","#77f8c7"],7+Math.min(4,linked.size));
   } else {
     spark(die.x,die.y,["#cbb074","#fff1ad"],4);
   }
   candidates.push({die,t:time,batch:die.manualBatch});
   const special = state.dieSpecials[die.slot];
-  if (special==="blast" && die.face>=5 && !die.fromBlast) {
-    addWave(die,"blast");
-    spark(die.x,die.y,["#ff9d63","#ffe0a0"],10);
+  const star = starStats(die);
+  if (!die.fromBlast && !echo) {
+    if (special==="blast" && die.face>=specialStats("blast",stars).face) {
+      addWave(die,"blast");
+      spark(die.x,die.y,["#ff9d63","#ffe0a0"],10);
+    } else if (star.targets) {
+      addWave(die,"star");
+      spark(die.x,die.y,[star.color],7);
+    }
+    if (star.heat) gainFever(star.heat);
   }
-  if (special==="heat" && die.face>=4 && state.feverLeft===0) {
-    gainFever(specialStats("heat",stars).charge);
+  const heat = special==="heat" ? specialStats("heat",stars) : null;
+  if (heat && die.face>=heat.face && state.feverLeft===0) {
+    gainFever(heat.charge);
     spark(die.x,die.y,["#ffe08a","#fff0c4"],8);
   }
   const boost = auraBonus(die);
-  if (boost) spark(die.x,die.y,["#90eed0"],4);
+  if (boost.bonus) spark(die.x,die.y,["#90eed0"],4);
+  if (boost.heat) gainFever(boost.heat);
   const multiplier = feverMultiplier();
-  const amount = Math.round((base+bonus)*(1+boost/100))*multiplier;
+  const amount = Math.round((base+bonus)*(1+boost.bonus/100)*(multiplier===2 ? 1+(heat?.feverBonus ?? 0) : 1))*multiplier;
   credit(amount);
   sound("land");
   sound("coin");
@@ -1012,6 +1081,7 @@ function settle(die) {
   placePopup({x:die.x,y:die.y-14*unit,life,total:life,amount,crit:bonus ? streak : 0,fever:multiplier===2});
 }
 function tickDie(die,dt) {
+  if (isFusing(die)) return;
   die.x += die.vx*dt;
   die.y += die.vy*dt;
   const friction = Math.exp(-(die.rolling ? 1.15 : 8)*dt);
@@ -1019,6 +1089,13 @@ function tickDie(die,dt) {
   die.vy *= friction;
   confine(die);
   if (!die.rolling) return;
+  if (starStats(die).targets && !reducedMotion.matches) {
+    die.trail ??= [];
+    if (time-(die.trail.at(-1)?.t ?? -Infinity)>=.04) {
+      die.trail.push({x:die.x-die.z*.1,y:die.y-die.z*.51-4.8*unit,t:time});
+      if (die.trail.length>8) die.trail.shift();
+    }
+  }
   die.vz -= 900*unit*dt;
   die.z += die.vz*dt;
   die.rx += die.sx*dt;
@@ -1043,15 +1120,17 @@ function tickDie(die,dt) {
   }
 }
 function separateDice() {
-  const min = 28*unit, minSq = min*min;
   for (let i=0;i<dice.length;i++) {
     const a = dice[i];
+    if (isFusing(a)) continue;
+    const aSize = starStats(a).size;
     for (let j=i+1;j<dice.length;j++) {
       const b = dice[j];
-      if (Math.abs(a.z-b.z)>17*unit) continue;
+      if (isFusing(b) || Math.abs(a.z-b.z)>17*unit) continue;
+      const min = 14*unit*(aSize+starStats(b).size);
       const dx = b.x-a.x, dy = b.y-a.y;
       const distSq = dx*dx+dy*dy;
-      if (distSq >= minSq) continue;
+      if (distSq >= min*min) continue;
       const dist = Math.sqrt(distSq);
       const nx = dist > .001 ? dx/dist : 1, ny = dist > .001 ? dy/dist : 0;
       const gap = (min-dist)*.31;
@@ -1083,9 +1162,14 @@ function tickArm(arm,dt) {
     if (arm.sweep.elapsed>.66) arm.sweep = null;
   }
   if (time >= arm.next) {
-    const settled = dice.filter(die=>!die.rolling);
-    const targets = settled.length ? settled : dice;
+    const available = dice.filter(die=>!isFusing(die));
+    const settled = available.filter(die=>!die.rolling);
+    const targets = settled.length ? settled : available;
     const target = targets[Math.floor(Math.random()*targets.length)];
+    if (!target) {
+      arm.next = time+.12;
+      return;
+    }
     arm.sweep = {elapsed:0,x:target.x,y:target.y,target,fired:false};
     arm.next = time+armInterval();
   }
@@ -1093,10 +1177,10 @@ function tickArm(arm,dt) {
     const sweep = arm.sweep;
     sweep.fired = true;
     let target = sweep.target;
-    if (target.rolling) {
+    if (target.rolling || isFusing(target)) {
       let nearest = Infinity;
       for (const die of dice) {
-        if (die.rolling) continue;
+        if (die.rolling || isFusing(die)) continue;
         const distance = Math.hypot(die.x-sweep.x,die.y-sweep.y);
         if (distance>=nearest) continue;
         target = die;
@@ -1125,7 +1209,7 @@ function cascadeArm(source) {
   for (let depth=0;depth<rank && remaining>0 && sources.length;depth++) {
     const next = [];
     for (const from of sources) {
-      const nearby = dice.filter(die=>!die.rolling)
+      const nearby = dice.filter(die=>!die.rolling && !isFusing(die))
         .map(die=>({die,distance:Math.hypot(die.x-from.x,die.y-from.y)}))
         .filter(item=>item.distance<=reach)
         .sort((a,b)=>a.distance-b.distance);
@@ -1140,20 +1224,39 @@ function cascadeArm(source) {
     sources = next;
   }
 }
+function tickFusion() {
+  if (!fusion) return;
+  const elapsed = time-fusion.start;
+  if (elapsed>=FUSION_IMPACT && !fusion.impacted) {
+    fusion.impacted = true;
+    const {die} = fusion;
+    const star = starStats(die);
+    spark(die.x,die.y,[star.color,"#fff3c6","#ffe29a"],36);
+  }
+  if (elapsed>=FUSION_DURATION) {
+    fusion = null;
+    uiDirty = true;
+  }
+}
 function step(dt) {
   time += dt;
   state.seconds += dt;
+  tickFusion();
   tickFever(dt);
   for (const arm of arms) tickArm(arm,dt);
   for (const wave of waves) {
     wave.t += dt;
     const radius = waveRadius(wave);
     for (const die of dice) {
+      if (wave.remaining<=0) break;
       if (!wave.hit.has(die) && Math.hypot(die.x-wave.x,die.y-wave.y)<=radius) {
         wave.hit.add(die);
         if (launch(die,wave.x,wave.y,wave.strength,wave.kind==="manual")) {
           die.manualBatch = wave.batch;
           die.fromBlast = wave.kind==="blast";
+          die.echo = wave.echo;
+          if (wave.echo && Math.random()<wave.echo.chance) die.nextFace = wave.echo.face;
+          wave.remaining--;
         }
       }
     }
@@ -1362,8 +1465,8 @@ function softFace(points,radius) {
 }
 const paintDepth = die => die.y+die.z*.9;
 const edgeSide = (a,b,p) => (b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x);
-function projectDie(die) {
-  const size = 14.2*unit*(1+Math.min(.28,die.z/(340*unit)));
+function projectDie(die,stars = state.dieStars[die.slot]) {
+  const size = 14.2*unit*STAR_RANKS[stars-1].size*(1+Math.min(.28,die.z/(340*unit)));
   const cx = die.x-die.z*.10, cy = die.y-die.z*.51-4.8*unit;
   const ax=Math.cos(die.rx), bx=Math.sin(die.rx);
   const ay=Math.cos(die.ry), by=Math.sin(die.ry);
@@ -1375,12 +1478,12 @@ function projectDie(die) {
   });
   return {size,points};
 }
-function drawDie(die) {
-  const rank = state.dieMaterials[die.slot];
+function drawDie(die,preset = null) {
+  const rank = preset?.rank ?? state.dieMaterials[die.slot];
   const material = materials[rank];
-  const special = SPECIAL_DICE[state.dieSpecials[die.slot]];
-  const stars = state.dieStars[die.slot];
-  const {size,points} = projectDie(die);
+  const special = SPECIAL_DICE[preset ? preset.type : state.dieSpecials[die.slot]];
+  const stars = preset?.stars ?? state.dieStars[die.slot];
+  const {size,points} = projectDie(die,stars);
   for (const [value,a,b,c,d] of faces) {
     const p=points[a], q=points[b], r=points[c], s=points[d];
     const ux=q.x-p.x, uy=q.y-p.y, vx=s.x-p.x, vy=s.y-p.y;
@@ -1483,7 +1586,8 @@ function drawWave(wave) {
   const radius = waveRadius(wave);
   if (radius<=0) return;
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius,0,Math.PI*2);
-  const color = wave.kind==="blast" ? "255,153,91" : wave.kind==="arm" ? "145,247,213" : "255,213,137";
+  const color = wave.kind==="blast" ? "255,153,91" : wave.kind==="arm" ? "145,247,213" :
+    wave.kind==="star" ? "200,173,255" : "255,213,137";
   ctx.strokeStyle="rgba("+color+","+(1-t)*.66+")";
   ctx.lineWidth=Math.min(radius*.18,(3.5-2*t)*unit);ctx.stroke();
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius*.8,0,Math.PI*2);
@@ -1575,11 +1679,82 @@ function drawPopup(popup) {
   ctx.globalAlpha=1;
 }
 function tableShake() {
+  if (reducedMotion.matches) return {x:0,y:0};
   const elapsed = time-shakeStart;
-  if (elapsed>=SHAKE_DURATION || reducedMotion.matches) return {x:0,y:0};
-  const envelope = ease(clamp(elapsed/.03,0,1))*(1-elapsed/SHAKE_DURATION)**2;
-  const amplitude = shakeAmplitude*envelope;
-  return {x:Math.sin(elapsed*62)*amplitude,y:Math.sin(elapsed*48)*amplitude*.55};
+  const amplitude = elapsed>=SHAKE_DURATION ? 0 : shakeAmplitude*ease(clamp(elapsed/.03,0,1))*(1-elapsed/SHAKE_DURATION)**2;
+  const impact = fusion ? time-fusion.start-FUSION_IMPACT : -1;
+  const kick = impact>=0 && impact<.24 ? 3.1*Math.sin(impact*55)*(1-impact/.24)**2 : 0;
+  const x = amplitude ? Math.sin(elapsed*62)*amplitude : 0;
+  const y = amplitude ? Math.sin(elapsed*48)*amplitude*.55 : 0;
+  return {x:clamp(x+kick*.65,-3.2,3.2),y:clamp(y+kick,-3.2,3.2)};
+}
+function drawStarAura(die) {
+  const star = starStats(die);
+  if (!star.targets || isFusing(die)) return;
+  const radius = (23+star.targets*2)*unit*star.size;
+  ctx.beginPath();
+  ctx.ellipse(die.x,die.y,radius,radius*.77,0,0,Math.PI*2);
+  ctx.fillStyle = star.color+"1e";
+  ctx.fill();
+  ctx.lineWidth = 5*unit;
+  ctx.strokeStyle = star.color+"30";
+  ctx.stroke();
+  ctx.lineWidth = 1.25*unit;
+  ctx.strokeStyle = star.color+"bd";
+  ctx.stroke();
+  if (!reducedMotion.matches) {
+    const angle = time*1.45+die.slot;
+    diamond(ctx,die.x+Math.cos(angle)*radius,die.y+Math.sin(angle)*radius*.77,2.3*unit,star.color);
+  }
+}
+function drawStarTrail(die) {
+  if (!die.trail?.length || reducedMotion.matches) return;
+  const star = starStats(die);
+  ctx.save();
+  for (const point of die.trail) {
+    const alpha = clamp(1-(time-point.t)/.35,0,1);
+    if (!alpha) continue;
+    ctx.beginPath();
+    ctx.arc(point.x,point.y,(2+alpha*4)*unit*star.size,0,Math.PI*2);
+    ctx.globalAlpha = .31*alpha;
+    ctx.fillStyle = star.color;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+function drawFusion() {
+  if (!fusion) return;
+  const elapsed = time-fusion.start;
+  const {x,y} = fusion;
+  const star = starStats(fusion.die);
+  if (elapsed<FUSION_IMPACT) {
+    if (reducedMotion.matches) return;
+    const t = ease(elapsed/FUSION_IMPACT);
+    for (const input of fusion.inputs) {
+      const die = input.die;
+      const moving = {...die,x:die.x+(x-die.x)*t,y:die.y+(y-die.y)*t,z:Math.sin(t*Math.PI)*19*unit,rz:die.rz+t*1.6};
+      ctx.beginPath();ctx.moveTo(die.x,die.y);ctx.lineTo(moving.x,moving.y-moving.z*.51);
+      ctx.lineWidth = 1.7*unit;
+      ctx.strokeStyle = star.color+"8c";
+      ctx.stroke();
+      drawDie(moving,input);
+    }
+    return;
+  }
+  const t = clamp((elapsed-FUSION_IMPACT)/(FUSION_DURATION-FUSION_IMPACT),0,1);
+  ctx.save();
+  if (!reducedMotion.matches) {
+    ctx.globalAlpha = .15*(1-t)**3;
+    ctx.fillStyle = star.color;
+    ctx.fillRect(0,0,width,height);
+    ctx.globalAlpha = .8*(1-t);
+  } else ctx.globalAlpha = .56*(1-t);
+  const radius = Math.min(board.w,board.h)*(reducedMotion.matches ? .11 : .05+.28*t);
+  ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);
+  ctx.strokeStyle = star.color;
+  ctx.lineWidth = 3*unit;
+  ctx.stroke();
+  ctx.restore();
 }
 function draw() {
   ctx.clearRect(0,0,width,height);
@@ -1615,7 +1790,9 @@ function draw() {
   }
   for (const wave of waves) drawWave(wave);
   for (const die of dice) {
-    const lift=die.z/unit, size=(16+lift*.09)*unit;
+    if (isFusing(die)) continue;
+    drawStarAura(die);
+    const lift=die.z/unit, size=(16+lift*.09)*unit*starStats(die).size;
     ctx.beginPath();
     ctx.ellipse(die.x+die.z*.13+3*unit,die.y+die.z*.20+5*unit,size,size*.65,die.rz*.08,0,Math.PI*2);
     ctx.fillStyle="rgba(6,23,15,"+(.36/(1+lift*.016))+")";
@@ -1625,8 +1802,12 @@ function draw() {
   for (const beam of beams) if (beam.life>0) drawBeam(beam);
   arms.forEach(drawArm);
   const ordered = [...dice].sort((a,b)=>paintDepth(a)-paintDepth(b));
-  for (const die of ordered) drawDie(die);
-  if (markedDie && time<markedUntil) {
+  for (const die of ordered) {
+    if (isFusing(die) && !reducedMotion.matches) continue;
+    drawStarTrail(die);
+    drawDie(die);
+  }
+  if (markedDie && !isFusing(markedDie) && time<markedUntil) {
     const die = markedDie;
     const y = die.y-die.z*.51;
     ctx.save();
@@ -1642,6 +1823,7 @@ function draw() {
     ctx.fillText("#"+(die.slot+1),die.x-die.z*.10,y-26*unit);
     ctx.restore();
   }
+  drawFusion();
   for (const p of particles) if (p.life>0) {
     ctx.globalAlpha=clamp(p.life/p.total,0,1);
     diamond(ctx,p.x,p.y,p.size,p.color);
@@ -1673,6 +1855,7 @@ function faceEntry(points,from,to) {
 function hitDie(from,to) {
   let target, entry = Infinity;
   for (const die of dice) {
+    if (isFusing(die)) continue;
     const {points} = projectDie(die);
     for (const [,a,b,c,d] of faces) {
       if (edgeSide(points[a],points[b],points[d])<.7) continue;
@@ -1695,7 +1878,7 @@ function keyboardRoll() {
   let nearest;
   let limit = Infinity;
   for (const die of dice) {
-    if (die.rolling) continue;
+    if (die.rolling || isFusing(die)) continue;
     const distance = Math.hypot(die.x-x,die.y-y);
     if (distance <= limit) {
       nearest = die;
