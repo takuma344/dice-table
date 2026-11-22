@@ -71,9 +71,9 @@ const MILESTONE_GROUPS = [
 const MILESTONE_IDS = new Set(MILESTONE_GROUPS.flatMap(group=>group.targets.map((_,index)=>group.id+"-"+index)));
 const MILESTONE_REWARDS = {income:"獲得コイン",resonance:"共鳴ボーナス",fever:"フィーバー充填"};
 const SPECIAL_CAP_COSTS = {
-  blast:[400,8500,35000,170000,820000],
-  aura:[575,11500,48000,245000,1200000],
-  heat:[500,9500,42000,210000,1000000],
+  blast:[2900,19000,80000,390000,1950000],
+  aura:[3500,27000,115000,570000,2900000],
+  heat:[3200,22000,96000,490000,2400000],
 };
 const SPECIAL_PATHS = {
   blast:{lane:"arms",at:[6,4],requires:{wave:1}},
@@ -81,43 +81,43 @@ const SPECIAL_PATHS = {
   heat:{lane:"roll",at:[4,5],requires:{fever:1}},
 };
 const talents = [
-  {id:"quality",lane:"dice",at:[1,2,2],icon:"die",title:"ダイス品質",costs:[140],requires:{tree:1},
+  {id:"quality",lane:"dice",at:[1,2,2],icon:"die",title:"ダイス品質",costs:[1200],requires:{tree:1},
     detail:()=>"「ダイス品質」を強化に追加。出目5・6の配当を伸ばす"},
-  {id:"material",lane:"dice",at:[1,3],icon:"gem",title:"材質加工",costs:[220,12000,145000],requires:{quality:1},
+  {id:"material",lane:"dice",at:[1,3],icon:"gem",title:"材質加工",costs:[2200,24000,320000],requires:{quality:1},
     progress:(n,s)=>n>1 ? materialRequirement(n-1,s) : null,
     detail:n=>materials[n].name+"までの材質進化を強化に追加"},
-  {id:"materialStart",lane:"dice",at:[1,4],icon:"die",title:"材質の下地",costs:[6000,70000],requires:n=>({material:n}),
+  {id:"materialStart",lane:"dice",at:[1,4],icon:"die",title:"材質の下地",costs:[12500,165000],requires:n=>({material:n}),
     progress:(n,s)=>materialRequirement(n,s),
     detail:n=>"新しく購入するダイスは"+materials[n].name+"から開始"},
-  {id:"merge",lane:"dice",at:[2,3],icon:"gem",title:"ダイス合成",costs:[420],requires:{quality:1},
+  {id:"merge",lane:"dice",at:[2,3],icon:"gem",title:"ダイス合成",costs:[2500],requires:{quality:1},
     progress:(_,s)=>progressRequirement("ダイス（合成前換算）",dicePriceBasis(s),2),
     detail:()=>"同じ材質・タイプ・星の2個を合成できる"},
-  {id:"income",lane:"roll",at:[3,4],icon:"coin",title:"配当アップ",costs:[650,4800,36000,235000],requires:{resonance:1},
+  {id:"income",lane:"roll",at:[3,4],icon:"coin",title:"配当アップ",costs:[3200,12500,90000,600000],requires:{resonance:1},
     progress:(n,s)=>progressRequirement("基礎収益アップ Lv.",s.baseIncome,[0,3,5,7][n-1]),
     detail:n=>"基礎配当 ＋"+20*n+"%"},
-  {id:"match",lane:"roll",at:[3,2,2],icon:"wave",title:"共鳴",costs:[100],requires:{tree:1},
+  {id:"match",lane:"roll",at:[3,2,2],icon:"wave",title:"共鳴",costs:[1000],requires:{tree:1},
     detail:()=>"近いタイミングに同じ目が出ると共鳴する"},
-  {id:"resonance",lane:"roll",at:[3,3],icon:"wave",title:"共鳴配当",costs:[700,7000,52000],requires:{match:1},
+  {id:"resonance",lane:"roll",at:[3,3],icon:"wave",title:"共鳴配当",costs:[2600,16500,135000],requires:{match:1},
     progress:(n,s)=>progressRequirement("最大共鳴コンボ",s.best,[0,3,6][n-1]),
     detail:n=>"共鳴ボーナス ＋"+25*n+"%"},
-  {id:"feverMode",lane:"roll",at:[4,3],icon:"speed",title:"フィーバー",costs:[850],requires:{match:1},
+  {id:"feverMode",lane:"roll",at:[4,3],icon:"speed",title:"フィーバー",costs:[3800],requires:{match:1},
     progress:(_,s)=>progressRequirement("累計共鳴",s.resonances,3),
     detail:()=>"共鳴などで充填するフィーバーゲージを追加"},
-  {id:"fever",lane:"roll",at:[4,4],icon:"speed",title:"熱気の蓄積",costs:[1800,16500,130000],requires:{feverMode:1},
+  {id:"fever",lane:"roll",at:[4,4],icon:"speed",title:"熱気の蓄積",costs:[6000,42000,330000],requires:{feverMode:1},
     progress:(n,s)=>progressRequirement("フィーバー発動",s.feverStarts,[1,4,12][n-1]),
     detail:n=>"共鳴によるゲージ充填 ＋"+20*n+"%"},
-  {id:"wave",lane:"arms",at:[6,2],icon:"wave",title:"手動衝撃波",costs:[120],requires:{tree:1},
+  {id:"wave",lane:"arms",at:[6,2],icon:"wave",title:"手動衝撃波",costs:[1400],requires:{tree:1},
     detail:()=>"「テーブル衝撃波」を強化に追加"},
-  {id:"arms",lane:"arms",at:[5,2],icon:"arm",title:"ロボットアーム",costs:[180],requires:{tree:1},
+  {id:"arms",lane:"arms",at:[5,2],icon:"arm",title:"ロボットアーム",costs:[1800],requires:{tree:1},
     detail:()=>"「ロボットアーム」を強化に追加"},
-  {id:"speed",lane:"arms",at:[5,3],icon:"speed",title:"アーム速度",costs:[900],requires:{arms:1},
+  {id:"speed",lane:"arms",at:[5,3],icon:"speed",title:"アーム速度",costs:[3600],requires:{arms:1},
     progress:(_,s)=>progressRequirement("アーム雇用",s.arms,1),
     detail:()=>"「アーム速度」を強化に追加"},
-  {id:"chain",lane:"arms",at:[5,4],icon:"arm",title:"近接ダイス連鎖",costs:[2400,19000,145000],requires:{speed:1},
+  {id:"chain",lane:"arms",at:[5,4],icon:"arm",title:"近接ダイス連鎖",costs:[6500,52000,390000],requires:{speed:1},
     progress:(n,s)=>[progressRequirement("アーム雇用",s.arms,1),
       progressRequirement("ダイス（合成前換算）",dicePriceBasis(s),[3,5,8][n-1])],
     detail:n=>n+" 段まで連鎖し、1作動につき最大 "+2*n+" 個を追加で投擲"},
-  {id:"armWave",lane:"arms",at:[5,5,2],icon:"wave",title:"アーム衝撃波",costs:[95000],requires:{chain:2,wave:1},
+  {id:"armWave",lane:"arms",at:[5,5,2],icon:"wave",title:"アーム衝撃波",costs:[240000],requires:{chain:2,wave:1},
     progress:(_,s)=>progressRequirement("テーブル衝撃波 Lv.",s.wave,1),
     detail:()=>"アームの主投擲で衝撃波を1回発生。衝撃波Lv.で範囲が広がる"},
   ...Object.entries(SPECIAL_DICE).map(([type,special])=>({
@@ -136,17 +136,17 @@ const upgrades = [
   {key:"tree",shop:true,icon:"gem",title:"スキルツリー解放",action:"解放",cost:()=>TREE_PRICE,
     detail:()=>"共鳴・材質加工・自動化などのスキルを解放できる"},
   {key:"baseIncome",icon:"coin",title:"基礎収益アップ",action:"強化",
-    cost:s=>[18,60,155,360][s.baseIncome] ?? 780*2.4**(s.baseIncome-4),
+    cost:s=>[30,105,300,760][s.baseIncome] ?? 1800*2.65**(s.baseIncome-4),
     detail:s=>"Lv. "+s.baseIncome+" · 基礎配当 ＋"+35*s.baseIncome+"%（1Lv.ごとに＋35%）"},
   {key:"quality",skill:"quality",icon:"die",title:"ダイス品質",action:"強化",cost:s=>150*2.5**s.quality,
     detail:s=>"Lv. "+s.quality+" · 出目5・6の配当 ＋"+15*s.quality+"%"},
   {key:"material",skill:"material",icon:"gem",title:"ダイスの材質",action:"1個進化"},
-  {key:"arms",skill:"arms",icon:"arm",title:"ロボットアーム",action:"雇用",cost:s=>85*2.85**s.arms,
+  {key:"arms",skill:"arms",icon:"arm",title:"ロボットアーム",action:"雇用",cost:s=>420*3.25**s.arms,
     detail:s=>s.arms+" / 6 基 · "+(s.talents.armWave ? "主投擲で衝撃波" : s.talents.chain ? "1個を投擲し、近くへ連鎖" : "1作動につきダイス1個")},
-  {key:"speed",skill:"speed",icon:"speed",title:"アーム速度",action:"強化",cost:s=>165*2.05**s.speed,
+  {key:"speed",skill:"speed",icon:"speed",title:"アーム速度",action:"強化",cost:s=>650*2.45**s.speed,
     detail:s=>s.arms ? "Lv. "+s.speed+" · "+armInterval().toFixed(1)+" 秒ごとに作動" : "ロボットアームを雇うと解放"},
   {key:"wave",skill:"wave",icon:"wave",title:"テーブル衝撃波",action:s=>s.wave ? "強化" : "有効化",
-    cost:s=>s.wave<2 ? [22,72][s.wave] : 150*1.90**(s.wave-2),
+    cost:s=>s.wave<2 ? [240,690][s.wave] : 1600*2.25**(s.wave-2),
     detail:s=>s.wave ? "Lv. "+s.wave+" · 手動で短辺の "+(waveRange(s.wave)*100).toFixed(1).replace(/\.0$/,"")+"% まで巻き込む" :
       "Lv. 0 · 近くのダイスも一緒に振れる"},
 ];
@@ -538,7 +538,7 @@ function buySpecial(type) {
   sound("buy");
   save();
   renderUI();
-  announce(special.name+"をテーブルに追加しました");
+  purchaseFeedback(specialViews.get(type).row,special.name+"を追加",price);
 }
 function renderSpecials() {
   let visible = false;
@@ -549,7 +549,7 @@ function renderSpecials() {
     if (view.row.hidden) continue;
     visible = true;
     const capped = count>=limit || state.dice>=caps.dice;
-    const label = count>=limit ? "所持上限" : state.dice>=caps.dice ? "テーブル満員" : "購入";
+    const label = count>=limit ? "所持上限" : state.dice>=caps.dice ? "テーブル満員" : state.coins<price ? "資金不足" : "購入";
     view.status.textContent = "所持 "+count+" / "+limit+" 個";
     view.button.disabled = capped || state.coins<price;
     view.button.firstElementChild.textContent = label;
@@ -910,6 +910,8 @@ function syncSkillInspector() {
 skillCompact.addEventListener("change",syncSkillInspector);
 syncSkillInspector();
 function inspectSkill(skill) {
+  unlockAudio();
+  sound("select");
   selectedSkill = skill;
   renderSkills();
   if (skillCompact.matches && !skillDialog.open) skillDialog.showModal();
@@ -933,6 +935,20 @@ skillDetails.buy.addEventListener("click",()=>{
   buyTalent(selectedSkill);
   if (skillDetails.buy.disabled) skillDetails.title.focus({preventScroll:true});
 });
+let receiptTimer;
+function purchaseFeedback(element,label,price) {
+  const receipt = byId("purchase-receipt");
+  const host = skillDialog.open ? skillDialog : document.body;
+  if (receipt.parentElement!==host) host.append(receipt);
+  receipt.textContent = "✓ "+label+"　−"+format(price)+" コイン";
+  receipt.hidden = false;
+  clearTimeout(receiptTimer);
+  receiptTimer = setTimeout(()=>{receipt.hidden=true;},1900);
+  if (!reducedMotion.matches) element.animate([
+    {boxShadow:"inset 0 0 0 2px #f6d696, 0 0 14px #dfb56d77"},
+    {boxShadow:"inset 0 0 0 1px transparent, 0 0 0 transparent"},
+  ],{duration:540,easing:"ease-out"});
+}
 function buyTalent(talent) {
   const rank = state.talents[talent.id];
   const cost = talent.costs[rank];
@@ -941,9 +957,11 @@ function buyTalent(talent) {
   state.coins -= cost;
   state.talents[talent.id]++;
   awardMilestones();
-  sound("buy");
+  sound("unlock");
   save();
   renderUI();
+  purchaseFeedback(skillCompact.matches ? skillInspector : skillViews.get(talent.id).node,
+    talent.title+" Lv."+state.talents[talent.id],cost);
 }
 function renderSkins() {
   skinViews.forEach((button,index)=>{
@@ -1017,7 +1035,9 @@ function renderSkills() {
     node.dataset.state = status;
     node.setAttribute("aria-pressed",String(skill===selectedSkill));
     node.setAttribute("aria-label",skill.title+" "+rankText+" "+skillStateNames[status]);
-    setText(label,isRoot ? "習得済み" : rankText);
+    const next = rank<max && rank>0 ? (blocked ? "条件未達" : ready ? "強化可能" : "資金不足") : "";
+    setText(label,isRoot ? "習得済み" : rankText+(next ? " · "+next : ""));
+    node.dataset.upgrade = String(ready && rank>0);
     if (skill===selectedSkill) renderSkillDetail({cost,requirements,blocked,ready,status});
   }
   for (const {parent,talent,path} of skillEdges) {
@@ -1136,7 +1156,7 @@ function renderUI() {
       "へ · "+offer.advanced+"/"+state.dice+"個済み";
     view.button.disabled = capped || locked || state.coins < price;
     const action = typeof item.action === "function" ? item.action(state) : item.action;
-    view.label.textContent = capped ? "最大" : locked ? "未解放" : action;
+    view.label.textContent = capped ? "最大" : locked ? "条件未達" : state.coins<price ? "資金不足" : action;
     view.price.hidden = capped || locked;
     view.amount.textContent = Number.isFinite(price) ? short(price) : "";
     view.button.setAttribute("aria-label",item.title+" "+view.label.textContent+
@@ -1180,14 +1200,19 @@ function buy(item) {
   if (key === "arms") spawnArm();
   if (key === "speed") arms.forEach(arm=>{arm.next = Math.min(arm.next,time+armInterval());});
   if (key === "arms" && state.arms === 1) announce("ロボットアームが稼働を開始");
-  sound("buy");
+  sound(key==="tree" ? "unlock" : "buy");
   save();
   if (key === "tree") selectTab(byId("skills-tab"),true);
   else renderUI();
+  purchaseFeedback(key==="tree" ? skillViews.get("tree").node : upgradeViews.get(key).row,item.title,offer.price);
 }
 
 const tabButtons = [...document.querySelectorAll("[data-tab]")];
 function selectTab(tab,focus = false) {
+  if (tab.getAttribute("aria-selected")!=="true") {
+    unlockAudio();
+    sound("select");
+  }
   const skillsOpen = tab.dataset.tab==="skills";
   document.querySelector(".game").classList.toggle("skills-open",skillsOpen);
   feverStage.inert = skillsOpen;
@@ -1269,6 +1294,11 @@ function sound(type,combo = 1) {
   if (now-(lastSound[type] ?? -10) < (type==="burst" ? .28 : type === "crit" ? .18 : .075)) return;
   if ((type==="coin" || type==="crit") && now-(lastSound.fever ?? -10)<.36) return;
   lastSound[type] = now;
+  if (type==="select") tone(460,560,.045,.014,"sine");
+  if (type==="unlock") {
+    tone(523,659,.12,.031,"triangle");
+    tone(784,988,.19,.028,"sine",.06);
+  }
   if (type === "hit") tone(random(210,330),92,.046,.037,"triangle");
   if (type === "land") tone(random(170,230),72,.058,.045,"triangle");
   if (type === "wave") tone(165,54,.15,.049,"sine");
@@ -2040,8 +2070,11 @@ function drawDie(die,preset = null) {
     if (ux*vy-uy*vx < .7) continue;
     const bright = Math.abs(ux*vy-uy*vx) > size*size*2;
     softFace([p,q,r,s],2.9*unit);
-    ctx.fillStyle = gradient(ctx,0,Math.min(p.y,q.y,r.y,s.y),0,Math.max(p.y,q.y,r.y,s.y),
-      [[0,bright ? material.high : material.low],[1,bright ? material.low : material.side]]);
+    const shine = .43+.17*Math.sin(die.rz+die.rx+value);
+    ctx.fillStyle = rank && bright ? gradient(ctx,p.x,p.y,r.x,r.y,
+      [[0,material.low],[shine,material.high],[shine+.18,material.low],[1,material.side]]) :
+      gradient(ctx,0,Math.min(p.y,q.y,r.y,s.y),0,Math.max(p.y,q.y,r.y,s.y),
+        [[0,bright ? material.high : material.low],[1,bright ? material.low : material.side]]);
     ctx.fill();
     ctx.lineWidth = .86*unit;
     ctx.strokeStyle = bright ? special?.color ?? (stars>1 ? "#ffe7a3" : material.edge) : material.edge;
@@ -2061,6 +2094,19 @@ function drawDie(die,preset = null) {
     }
     ctx.save();
     ctx.transform(ux,uy,vx,vy,p.x,p.y);
+    if (bright) {
+      ctx.strokeStyle = rank===3 ? "#fff7c5bd" : "#fff6dc73";
+      ctx.lineWidth = .026;
+      ctx.beginPath();ctx.moveTo(.08,.86);ctx.lineTo(.08,.09);ctx.lineTo(.86,.09);ctx.stroke();
+      if (rank===2) {
+        ctx.strokeStyle="#40576450";ctx.lineWidth=.012;
+        ctx.beginPath();
+        for (let i=0;i<5;i++) {
+          ctx.moveTo(.12,.22+i*.13);ctx.lineTo(.88,.18+i*.13);
+        }
+        ctx.stroke();
+      }
+    }
     for (const [dx,dy] of pips[value]) {
       const x=.5+dx*.237, y=.5+dy*.237, radius=value===1 ? .094 : .074;
       ctx.beginPath();ctx.arc(x,y+.014,radius,0,Math.PI*2);
