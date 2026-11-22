@@ -39,7 +39,7 @@ const MASTERY = [
 ];
 const ALL_MASTERY = (1<<MASTERY.length)-1;
 const skins = [
-  {id:"classic",name:"クラシックグリーン",unlock:0,felt:["#367054","#265b44","#133f33"],inlay:"#d9c48a",
+  {id:"classic",name:"クラシックグリーン",unlock:0,felt:["#23856a","#126352","#103e3c"],inlay:"#d9c48a",
     rail:["#9d6848","#72462f","#9d6441","#78432e","#563220"],lip:["#5d3727","#613827","#47271e","#2b1915"]},
   {id:"royal",name:"ロイヤルレッド",unlock:10000,felt:["#863a46","#672a37","#421b29"],inlay:"#f2bd76",
     rail:["#a77346","#6b3a2a","#925537","#603123","#41211e"],lip:["#77462b","#683529","#462423","#301819"]},
@@ -318,6 +318,7 @@ let state = load();
 let time = 0;
 let width = 1, height = 1, resolution = 1, unit = 1;
 let board;
+const impactPrints = [];
 let dice = [], arms = [], waves = [], beams = [], particles = [], popups = [];
 let popupGrid, feverGlow;
 let recent = Array.from({length:7},()=>[]);
@@ -945,9 +946,17 @@ function purchaseFeedback(element,label,price) {
   clearTimeout(receiptTimer);
   receiptTimer = setTimeout(()=>{receipt.hidden=true;},1900);
   if (!reducedMotion.matches) element.animate([
-    {boxShadow:"inset 0 0 0 4px #ffda82, 0 0 16px #dfb56d99",filter:"brightness(1.16)"},
+    {transform:"scale(.98)",boxShadow:"inset 0 0 0 3px #fff1ba, 0 0 18px #ffc769b3"},
+    {transform:"scale(1.012)",boxShadow:"inset 0 0 0 2px #ffcc72, 0 0 10px #ffcf8270",offset:.32},
     {boxShadow:"inset 0 0 0 1px transparent, 0 0 0 transparent"},
   ],{duration:540,easing:"ease-out"});
+  if (!reducedMotion.matches && element.matches(".skill-node,.skill-inspector")) {
+    const links = byId("skill-links").querySelectorAll("[data-selected=true]");
+    for (const link of links) link.animate([{stroke:"#fff6b3",strokeWidth:5},{}],{duration:620});
+    byId("skills").querySelector(".skill-wallet").animate([
+      {filter:"brightness(1.45)",transform:"translateY(-2px)"},{}
+    ],{duration:420,easing:"ease-out"});
+  }
 }
 function buyTalent(talent) {
   const rank = state.talents[talent.id];
@@ -1411,7 +1420,7 @@ function resize() {
       for (const input of fusion.inputs) move(input.die);
     }
     for (const arm of arms) if (arm.sweep) move(arm.sweep);
-    for (const point of [...waves,...particles,...popups]) move(point);
+    for (const point of [...waves,...particles,...popups,...impactPrints]) move(point);
     if (pointer) {
       move(pointer.start);
       move(pointer.last);
@@ -1465,6 +1474,7 @@ function spawnArm() {
 function resetTable() {
   dice = []; arms = []; waves = []; beams = []; popups = []; particles = [];
   markedDie = null;
+  impactPrints.length = 0;
   fusions = [];
   burstUntil = 0;
   burstPayout = 0;
@@ -1488,6 +1498,7 @@ function confine(die,rebound = true) {
   if (hitX) die.vx *= -.66;
   if (hitY) die.vy *= -.66;
   if ((hitX || hitY) && Math.hypot(die.vx,die.vy)>30*unit) {
+    impactPrint(hitX ? x+Math.sign(die.x-x)*rx : x,hitY ? y+Math.sign(die.y-y)*ry : y,"rail");
     sound("hit");
     hardImpact(die);
   }
@@ -1657,6 +1668,7 @@ function settle(die) {
     sound("burst");
     trackMastery(false);
   }
+  impactPrint(die.x,die.y,"coins");
   sound("land");
   sound("coin");
   const life = bonus || burst ? 1.1 : .85;
@@ -1672,10 +1684,10 @@ function tickDie(die,dt) {
   die.vy *= friction;
   confine(die);
   if (!die.rolling) return;
-  if (starStats(die).targets && !reducedMotion.matches) {
+  if (!reducedMotion.matches) {
     die.trail ??= [];
     if (time-(die.trail.at(-1)?.t ?? -Infinity)>=.04) {
-      die.trail.push({x:die.x-die.z*.1,y:die.y-die.z*.51-4.8*unit,t:time});
+      die.trail.push({x:die.x-die.z*.1,y:die.y-die.z*.51-4.8*unit,angle:die.rz,t:time});
       if (die.trail.length>8) die.trail.shift();
     }
   }
@@ -1729,7 +1741,10 @@ function separateDice() {
         a.vy -= transfer*ny;
         b.vx += transfer*nx;
         b.vy += transfer*ny;
-        if (approach > 34*unit) {sound("hit");hardImpact(a);hardImpact(b);}
+        if (approach > 34*unit) {
+          impactPrint((a.x+b.x)/2,(a.y+b.y)/2-(a.z+b.z)*.255,"clash");
+          sound("hit");hardImpact(a);hardImpact(b);
+        }
       }
       confine(a,false); confine(b,false);
     }
@@ -2004,6 +2019,20 @@ function paintTable() {
     g.strokeStyle = "#c9b67b77";
     g.stroke();
     diamond(g,lx+dx*edge*.8,ly+dy*edge*.8,Math.max(1.5,unit*2.4),"#d2c08f88");
+    // Mirrored enamel leaves follow the frame on every table skin.
+    g.save();
+    g.translate(lx,ly);
+    g.scale(dx*edge,dy*edge);
+    for (const enamel of ["#e58b5f","#69cbb5"]) {
+      g.beginPath();
+      g.moveTo(.25,.28);
+      g.quadraticCurveTo(1.18,.18,2.72,.40);
+      g.quadraticCurveTo(1.36,.83,.25,.28);
+      g.fillStyle = enamel; g.fill();
+      g.strokeStyle = skin.inlay; g.lineWidth = .035; g.stroke();
+      g.transform(0,1,1,0,0,0);
+    }
+    g.restore();
   }
   const circleR = Math.min(w,h)*.285;
   for (const [r,color] of [[circleR,"#dcc28e30"],[circleR*.935,"#dcc28e22"]]) {
@@ -2301,6 +2330,14 @@ function drawPopup(popup) {
   ctx.strokeStyle="#17322a";
   ctx.font="800 "+amountSize+"px 'Segoe UI',sans-serif";
   const label="＋"+short(popup.amount);
+  const badgeWidth = Math.min(maxWidth,ctx.measureText(label).width+14*unit);
+  rounded(ctx,x-badgeWidth/2,y-amountSize*.65,badgeWidth,amountSize*1.32,amountSize*.48);
+  ctx.fillStyle = popup.crit ? "#10473e" : "#452e20";
+  ctx.fill();
+  ctx.strokeStyle = popup.crit ? "#65e5bf" : "#dfa343";
+  ctx.lineWidth = unit;
+  ctx.stroke();
+  ctx.strokeStyle = "#362717";
   ctx.strokeText(label,x,y,maxWidth);
   ctx.fillStyle=popup.burst ? "#ffe48b" : popup.fever ? "#fff0ad" : popup.crit ? "#c7ffcc" : "#ffe4a1";
   ctx.fillText(label,x,y,maxWidth);
@@ -2346,18 +2383,69 @@ function drawStarAura(die) {
     diamond(ctx,die.x+Math.cos(angle)*radius,die.y+Math.sin(angle)*radius*.77,2.3*unit,star.color);
   }
 }
-function drawStarTrail(die) {
-  if (!die.trail?.length || reducedMotion.matches) return;
-  const star = starStats(die);
+// Cosmetic events use fixed patterns and the animation clock, independent of roll RNG.
+function impactPrint(x,y,kind) {
+  if (reducedMotion.matches) return;
+  if (impactPrints.length>=28) impactPrints.shift();
+  impactPrints.push({x,y,kind,start:time});
+}
+function drawImpactPrints() {
+  while (impactPrints.length && time-impactPrints[0].start>=.48) impactPrints.shift();
+  if (reducedMotion.matches) return;
   ctx.save();
-  for (const point of die.trail) {
-    const alpha = clamp(1-(time-point.t)/.35,0,1);
-    if (!alpha) continue;
+  for (const effect of impactPrints) {
+    const t = (time-effect.start)/.48;
+    const spread = 1-(1-t)**2;
+    const coins = effect.kind==="coins";
+    const color = coins ? "#ffd255" : effect.kind==="rail" ? "#ff986d" : "#8df9ee";
+    ctx.globalAlpha = (1-t)*.88;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = (2.8-1.7*t)*unit;
+    const radius = (6+26*spread)*unit;
     ctx.beginPath();
-    ctx.arc(point.x,point.y,(2+alpha*4)*unit*star.size,0,Math.PI*2);
-    ctx.globalAlpha = .31*alpha;
-    ctx.fillStyle = star.color;
-    ctx.fill();
+    ctx.ellipse(effect.x,effect.y,radius,radius*.53,0,0,Math.PI*2);
+    ctx.stroke();
+    for (let i=0;i<6;i++) {
+      const angle = i*Math.PI/3+effect.start%1;
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      const x = effect.x+dx*radius;
+      const y = effect.y+dy*radius*.65-(coins ? 16*Math.sin(t*Math.PI)*unit : 0);
+      ctx.beginPath();
+      if (coins) {
+        ctx.ellipse(x,y,(1.1+1.8*Math.abs(Math.cos(i+t*6)))*unit,3.6*unit,angle*.22,0,Math.PI*2);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.lineWidth = unit; ctx.strokeStyle = "#93521d";
+      } else {
+        ctx.moveTo(x,y); ctx.lineTo(x+dx*6*unit,y+dy*5*unit);
+        ctx.strokeStyle = i%2 ? color : "#fff5cf";
+      }
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+function drawRollTrail(die) {
+  if (!die.trail?.length || reducedMotion.matches) return;
+  const color = SPECIAL_DICE[state.dieSpecials[die.slot]]?.color ??
+    (state.dieStars[die.slot]>1 ? starStats(die).color : materials[state.dieMaterials[die.slot]].high);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineCap = "round";
+  for (let i=1;i<die.trail.length;i++) {
+    const point = die.trail[i], previous = die.trail[i-1];
+    const fade = 1-(time-point.t)/.30;
+    if (fade<=0) continue;
+    ctx.globalAlpha = fade*.48;
+    ctx.lineWidth = (1+4*fade)*unit;
+    ctx.beginPath(); ctx.moveTo(previous.x,previous.y); ctx.lineTo(point.x,point.y); ctx.stroke();
+    if (i%3===0) {
+      ctx.save();
+      ctx.translate(point.x,point.y); ctx.rotate(point.angle);
+      const half = (5+4*fade)*unit;
+      ctx.lineWidth = 1.25*unit;
+      ctx.strokeRect(-half,-half,half*2,half*2);
+      ctx.restore();
+    }
   }
   ctx.restore();
 }
@@ -2424,6 +2512,7 @@ function draw() {
     ctx.lineWidth = Math.max(.75,unit);
     ctx.stroke();
   }
+  drawImpactPrints();
   for (const wave of waves) drawWave(wave);
   for (const die of dice) {
     if (isFusing(die)) continue;
@@ -2440,7 +2529,7 @@ function draw() {
   const ordered = [...dice].sort((a,b)=>paintDepth(a)-paintDepth(b));
   for (const die of ordered) {
     if (isFusing(die) && !reducedMotion.matches) continue;
-    drawStarTrail(die);
+    drawRollTrail(die);
     drawDie(die);
   }
   drawThrowGuide();
