@@ -75,54 +75,60 @@ const SPECIAL_CAP_COSTS = {
   aura:[575,11500,48000,245000,1200000],
   heat:[500,9500,42000,210000,1000000],
 };
+const SPECIAL_PATHS = {
+  blast:{lane:"arms",at:[6,4],requires:{wave:1}},
+  aura:{lane:"dice",at:[2,4],requires:n=>n>=4 ? {merge:1,material:2} : {merge:1}},
+  heat:{lane:"roll",at:[4,5],requires:{fever:1}},
+};
 const talents = [
-  {id:"quality",branch:"ダイス",icon:"die",title:"ダイス品質",costs:[140],
+  {id:"quality",lane:"dice",at:[1,2,2],icon:"die",title:"ダイス品質",costs:[140],requires:{tree:1},
     detail:()=>"「ダイス品質」を強化に追加。出目5・6の配当を伸ばす"},
-  {id:"material",branch:"ダイス",icon:"gem",title:"材質加工",costs:[220,12000,145000],
-    progress:(n,s)=>n>1 ? materialRequirement(n-1,s) : "",
+  {id:"material",lane:"dice",at:[1,3],icon:"gem",title:"材質加工",costs:[220,12000,145000],requires:{quality:1},
+    progress:(n,s)=>n>1 ? materialRequirement(n-1,s) : null,
     detail:n=>materials[n].name+"までの材質進化を強化に追加"},
-  {id:"materialStart",branch:"ダイス",icon:"die",title:"材質の下地",costs:[6000,70000],requires:n=>({material:n}),
+  {id:"materialStart",lane:"dice",at:[1,4],icon:"die",title:"材質の下地",costs:[6000,70000],requires:n=>({material:n}),
     progress:(n,s)=>materialRequirement(n,s),
     detail:n=>"新しく購入するダイスは"+materials[n].name+"から開始"},
-  {id:"merge",branch:"ダイス",icon:"gem",title:"ダイス合成",costs:[420],
+  {id:"merge",lane:"dice",at:[2,3],icon:"gem",title:"ダイス合成",costs:[420],requires:{quality:1},
     progress:(_,s)=>progressRequirement("ダイス（合成前換算）",dicePriceBasis(s),2),
     detail:()=>"同じ材質・タイプ・星の2個を合成できる"},
-  {id:"income",branch:"配当と連鎖",icon:"coin",title:"配当アップ",costs:[650,4800,36000,235000],
+  {id:"income",lane:"roll",at:[3,4],icon:"coin",title:"配当アップ",costs:[650,4800,36000,235000],requires:{resonance:1},
     progress:(n,s)=>progressRequirement("基礎収益アップ Lv.",s.baseIncome,[0,3,5,7][n-1]),
     detail:n=>"基礎配当 ＋"+20*n+"%"},
-  {id:"match",branch:"配当と連鎖",icon:"wave",title:"共鳴",costs:[100],
+  {id:"match",lane:"roll",at:[3,2,2],icon:"wave",title:"共鳴",costs:[100],requires:{tree:1},
     detail:()=>"近いタイミングに同じ目が出ると共鳴する"},
-  {id:"resonance",branch:"配当と連鎖",icon:"wave",title:"共鳴配当",costs:[700,7000,52000],requires:{match:1},
+  {id:"resonance",lane:"roll",at:[3,3],icon:"wave",title:"共鳴配当",costs:[700,7000,52000],requires:{match:1},
     progress:(n,s)=>progressRequirement("最大共鳴コンボ",s.best,[0,3,6][n-1]),
     detail:n=>"共鳴ボーナス ＋"+25*n+"%"},
-  {id:"feverMode",branch:"配当と連鎖",icon:"speed",title:"フィーバー",costs:[850],requires:{match:1},
+  {id:"feverMode",lane:"roll",at:[4,3],icon:"speed",title:"フィーバー",costs:[850],requires:{match:1},
     progress:(_,s)=>progressRequirement("累計共鳴",s.resonances,3),
     detail:()=>"共鳴などで充填するフィーバーゲージを追加"},
-  {id:"fever",branch:"配当と連鎖",icon:"speed",title:"熱気の蓄積",costs:[1800,16500,130000],requires:{feverMode:1},
+  {id:"fever",lane:"roll",at:[4,4],icon:"speed",title:"熱気の蓄積",costs:[1800,16500,130000],requires:{feverMode:1},
     progress:(n,s)=>progressRequirement("フィーバー発動",s.feverStarts,[1,4,12][n-1]),
     detail:n=>"共鳴によるゲージ充填 ＋"+20*n+"%"},
-  {id:"wave",branch:"テーブルとアーム",icon:"wave",title:"手動衝撃波",costs:[120],
+  {id:"wave",lane:"arms",at:[6,2],icon:"wave",title:"手動衝撃波",costs:[120],requires:{tree:1},
     detail:()=>"「テーブル衝撃波」を強化に追加"},
-  {id:"arms",branch:"テーブルとアーム",icon:"arm",title:"ロボットアーム",costs:[180],
+  {id:"arms",lane:"arms",at:[5,2],icon:"arm",title:"ロボットアーム",costs:[180],requires:{tree:1},
     detail:()=>"「ロボットアーム」を強化に追加"},
-  {id:"speed",branch:"テーブルとアーム",icon:"speed",title:"アーム速度",costs:[900],requires:{arms:1},
+  {id:"speed",lane:"arms",at:[5,3],icon:"speed",title:"アーム速度",costs:[900],requires:{arms:1},
     progress:(_,s)=>progressRequirement("アーム雇用",s.arms,1),
     detail:()=>"「アーム速度」を強化に追加"},
-  {id:"chain",branch:"テーブルとアーム",icon:"arm",title:"近接ダイス連鎖",costs:[2400,19000,145000],requires:{arms:1},
-    progress:(n,s)=>progressRequirement("アーム雇用",s.arms,1) ||
-      progressRequirement("ダイス（合成前換算）",dicePriceBasis(s),[3,5,8][n-1]),
+  {id:"chain",lane:"arms",at:[5,4],icon:"arm",title:"近接ダイス連鎖",costs:[2400,19000,145000],requires:{speed:1},
+    progress:(n,s)=>[progressRequirement("アーム雇用",s.arms,1),
+      progressRequirement("ダイス（合成前換算）",dicePriceBasis(s),[3,5,8][n-1])],
     detail:n=>n+" 段まで連鎖し、1作動につき最大 "+2*n+" 個を追加で投擲"},
-  {id:"armWave",branch:"テーブルとアーム",icon:"wave",title:"アーム衝撃波",costs:[95000],requires:{chain:2,wave:1},
+  {id:"armWave",lane:"arms",at:[5,5,2],icon:"wave",title:"アーム衝撃波",costs:[95000],requires:{chain:2,wave:1},
     progress:(_,s)=>progressRequirement("テーブル衝撃波 Lv.",s.wave,1),
     detail:()=>"アームの主投擲で衝撃波を1回発生。衝撃波Lv.で範囲が広がる"},
   ...Object.entries(SPECIAL_DICE).map(([type,special])=>({
-    id:special.skill,branch:"特殊ダイス",icon:special.icon,title:special.name,
-    costs:SPECIAL_CAP_COSTS[type],requires:type==="heat" ? {feverMode:1} : undefined,
+    id:special.skill,icon:special.icon,title:special.name,
+    costs:SPECIAL_CAP_COSTS[type],...SPECIAL_PATHS[type],
     progress:(n,s)=>progressRequirement("同種のダイス（合成前換算）",specialDiceBasis(s,type),n-1),
     detail:n=>n===1 ? "ショップに追加 · 同時に1個まで" : "同時に "+n+" 個まで",
   })),
 ];
 const talentById = new Map(talents.map(talent=>[talent.id,talent]));
+const skillRoot = {id:"tree",lane:"root",at:[3,1,2],icon:"gem",title:"スキルツリー解放"};
 const upgrades = [
   {key:"dice", shop:true, icon:"die", title:"通常ダイス", action:"購入",
     cost:s=>dicePurchasePrice(normalDiceBasis(s)),
@@ -297,6 +303,8 @@ function load() {
     });
     initial.masteryRewards = Math.min(ALL_MASTERY,initial.masteryRewards);
     if (!Number.isFinite(raw.version) || raw.version<SAVE_VERSION) migrateLegacy(initial,raw);
+    // Learned skills remain active even when an older save lacks a newly required parent.
+    if (Object.values(initial.talents).some(Boolean)) initial.tree = true;
     initial.merges = Math.max(initial.merges,2**(initial.highestStar-1)-1);
     if (!initial.talents.feverMode) initial.feverLeft = initial.feverCharge = initial.feverCoins = 0;
     if (!initial.feverLeft) initial.feverBurstRolls = 0;
@@ -812,43 +820,123 @@ const masteryViews = MASTERY.map(goal=>{
   byId("mastery-goals").append(row);
   return {row,value:row.querySelector("span"),progress:row.querySelector("progress")};
 });
-const talentViews = new Map();
-for (const branch of new Set(talents.map(talent=>talent.branch))) {
-  const group = document.createElement("section");
-  group.className = "talent-branch";
-  group.innerHTML = "<h4>"+branch+'</h4><div class="upgrades"></div>';
-  for (const talent of talents.filter(item=>item.branch===branch)) {
-    const row = document.createElement("article");
-    row.className = "upgrade";
-    row.innerHTML = '<span class="upgrade-icon">'+icon(talent.icon)+'</span><div><h5 class="upgrade-name">'+
-      talent.title+'</h5><p class="upgrade-detail"></p></div><button class="buy"><span class="buy-label"></span><span class="price">'+
-      icon("coin")+'<span></span></span></button>';
-    const button = row.querySelector("button");
-    const price = button.lastElementChild;
-    button.addEventListener("click",()=>buyTalent(talent));
-    talentViews.set(talent.id,{detail:row.querySelector(".upgrade-detail"),button,label:button.firstElementChild,price});
-    group.lastElementChild.append(row);
-  }
-  byId("skill-nodes").append(group);
+const skillMap = byId("skill-nodes");
+const skillViewport = byId("skill-viewport");
+const skillInspector = byId("skill-inspector");
+const skillDialog = byId("skill-detail-dialog");
+const skillCompact = matchMedia("(max-width: 940px), (pointer: coarse)");
+const skillDetails = {
+  icon:byId("skill-detail-icon"), title:byId("skill-detail-title"), rank:byId("skill-detail-rank"),
+  effect:byId("skill-detail-effect"), gates:byId("skill-detail-gates"), list:byId("skill-detail-prerequisites"),
+  offer:byId("skill-detail-offer"), price:byId("skill-detail-price"), buy:byId("skill-detail-buy"),
+};
+const skillNodes = [skillRoot,...talents].sort((a,b)=>a.at[1]-b.at[1] || a.at[0]-b.at[0]);
+const skillViews = new Map();
+const skillEdges = [];
+const svgNS = "http://www.w3.org/2000/svg";
+const skillStateNames = {learned:"習得済み",ready:"購入可能",saving:"資金不足",locked:"条件未達"};
+let selectedSkill = skillRoot;
+let detailGateSignature = "";
+function setText(node,value) {
+  if (node.textContent!==value) node.textContent = value;
+}
+function talentParents(talent,rank) {
+  return typeof talent.requires==="function" ? talent.requires(rank) : talent.requires;
+}
+function skillRank(id) {
+  return id==="tree" ? Number(state.tree) : state.talents[id];
 }
 function progressRequirement(label,current,target) {
-  return current<target ? label+" "+format(current)+" / "+format(target) : "";
+  return target>0 ? {text:label+" "+format(current)+" / "+format(target),met:current>=target} : null;
 }
 function materialRequirement(rank,progress) {
-  return progress.collection.includes("material-"+rank) ? "" : materials[rank].name+"を図鑑に登録";
+  return {text:materials[rank].name+"を図鑑に登録",met:progress.collection.includes("material-"+rank)};
 }
-function missingPrerequisites(talent, rank) {
-  const required = typeof talent.requires==="function" ? talent.requires(rank) : talent.requires;
-  const missing = Object.entries(required ?? {}).filter(([id,level])=>state.talents[id]<level)
-    .map(([id,level])=>talentById.get(id).title+" Lv."+level);
-  const progress = talent.progress?.(rank,state);
-  if (progress) missing.push(progress);
-  return missing;
+function skillRequirements(talent,rank) {
+  const parents = Object.entries(talentParents(talent,rank)).map(([id,level])=>({
+    text:id==="tree" ? skillRoot.title : talentById.get(id).title+" Lv."+level,
+    met:skillRank(id)>=level,
+  }));
+  return parents.concat(talent.progress?.(rank,state) ?? []).filter(Boolean);
 }
+for (const skill of skillNodes) {
+  const node = document.createElement("button");
+  const [column,row,span=1] = skill.at;
+  node.type = "button";
+  node.id = "skill-node-"+skill.id;
+  node.className = "skill-node";
+  node.dataset.lane = skill.lane;
+  node.style.gridArea = row+" / "+column+" / span 1 / span "+span;
+  node.setAttribute("aria-controls","skill-inspector");
+  node.innerHTML = '<span class="skill-node-icon">'+icon(skill.icon)+'</span>'+
+    '<span class="skill-node-name">'+skill.title+'</span><span class="skill-node-rank"></span>';
+  node.addEventListener("click",()=>inspectSkill(skill));
+  skillViews.set(skill.id,{node,rank:node.lastElementChild});
+  skillMap.append(node);
+}
+for (const talent of talents) {
+  const parents = new Set(talent.costs.flatMap((_,index)=>Object.keys(talentParents(talent,index+1))));
+  for (const parent of parents) {
+    const path = document.createElementNS(svgNS,"path");
+    path.dataset.lane = talent.lane;
+    skillEdges.push({parent,talent,path});
+    byId("skill-links").append(path);
+  }
+}
+function positionSkillEdges() {
+  if (!skillMap.clientWidth) return;
+  for (const {parent,talent,path} of skillEdges) {
+    const from = skillViews.get(parent).node;
+    const to = skillViews.get(talent.id).node;
+    const x = from.offsetLeft+from.offsetWidth/2, y = from.offsetTop+from.offsetHeight;
+    const endX = to.offsetLeft+to.offsetWidth/2, endY = to.offsetTop;
+    const midY = (y+endY)/2;
+    if (parent==="wave" && talent.id==="armWave") {
+      const side = skillMap.clientWidth-10, startY = from.offsetTop+from.offsetHeight/2;
+      path.setAttribute("d","M"+(from.offsetLeft+from.offsetWidth)+" "+startY+" H"+side+" V"+(endY-12)+" H"+endX+" V"+endY);
+    } else {
+      path.setAttribute("d","M"+x+" "+y+" C"+x+" "+midY+" "+endX+" "+midY+" "+endX+" "+endY);
+    }
+  }
+}
+const skillObserver = new ResizeObserver(positionSkillEdges);
+skillObserver.observe(skillMap);
+function syncSkillInspector() {
+  if (!skillCompact.matches) skillDialog.close();
+  const host = skillCompact.matches ? skillDialog : byId("skill-inspector-slot");
+  if (skillInspector.parentElement!==host) host.append(skillInspector);
+  byId("skill-detail-close").hidden = !skillCompact.matches;
+}
+skillCompact.addEventListener("change",syncSkillInspector);
+syncSkillInspector();
+function inspectSkill(skill) {
+  selectedSkill = skill;
+  renderSkills();
+  if (skillCompact.matches && !skillDialog.open) skillDialog.showModal();
+  skillDetails.title.focus({preventScroll:true});
+}
+function centerSkillNode(id,behavior = "instant") {
+  const {node} = skillViews.get(id);
+  skillViewport.scrollTo({left:node.offsetLeft+(node.offsetWidth-skillViewport.clientWidth)/2,behavior});
+}
+for (const button of document.querySelectorAll("[data-route-node]")) {
+  button.addEventListener("click",()=>{
+    const id = button.dataset.routeNode;
+    centerSkillNode(id,reducedMotion.matches ? "instant" : "smooth");
+    skillViews.get(id).node.focus({preventScroll:true});
+  });
+}
+byId("skill-shop-link").addEventListener("click",()=>selectTab(byId("shop-tab"),true));
+byId("skill-detail-close").addEventListener("click",()=>skillDialog.close());
+skillDetails.buy.addEventListener("click",()=>{
+  if (selectedSkill===skillRoot) return;
+  buyTalent(selectedSkill);
+  if (skillDetails.buy.disabled) skillDetails.title.focus({preventScroll:true});
+});
 function buyTalent(talent) {
   const rank = state.talents[talent.id];
   const cost = talent.costs[rank];
-  if (!state.tree || cost===undefined || missingPrerequisites(talent,rank+1).length || state.coins<cost) return;
+  if (!state.tree || cost===undefined || skillRequirements(talent,rank+1).some(check=>!check.met) || state.coins<cost) return;
   unlockAudio();
   state.coins -= cost;
   state.talents[talent.id]++;
@@ -876,27 +964,67 @@ function renderSkins() {
     view.value.textContent = completed ? "達成済み" : current+" / "+goal.target;
   });
 }
+function renderSkillDetail(offer) {
+  const skill = selectedSkill;
+  const isRoot = skill===skillRoot;
+  const rank = skillRank(skill.id);
+  const max = isRoot ? 1 : skill.costs.length;
+  const maxed = rank===max;
+  skillInspector.dataset.lane = skill.lane;
+  setText(skillDetails.title,skill.title);
+  if (skillDetails.icon.dataset.icon!==skill.icon) {
+    skillDetails.icon.innerHTML = icon(skill.icon);
+    skillDetails.icon.dataset.icon = skill.icon;
+  }
+  setText(skillDetails.rank,"Lv. "+rank+" / "+max+" · "+skillStateNames[offer.status]);
+  const effect = isRoot ? "ダイスショップで解放した起点から、各ルートに進めます。" :
+    rank && !maxed ? "現在 "+skill.detail(rank)+"／次のレベル "+skill.detail(rank+1) : skill.detail(rank || 1);
+  setText(skillDetails.effect,effect);
+  skillDetails.gates.hidden = isRoot;
+  const signature = JSON.stringify(offer.requirements);
+  if (signature!==detailGateSignature) {
+    detailGateSignature = signature;
+    skillDetails.list.replaceChildren(...offer.requirements.map(check=>{
+      const entry = document.createElement("li");
+      entry.dataset.met = String(check.met);
+      entry.textContent = (check.met ? "✓ " : "○ ")+check.text;
+      return entry;
+    }));
+  }
+  skillDetails.offer.hidden = maxed;
+  skillDetails.buy.disabled = maxed || !offer.ready;
+  if (maxed) return;
+  setText(skillDetails.price,format(offer.cost));
+  const label = offer.ready ? (rank ? "レベルを上げる" : "スキルを習得する") : offer.blocked ? "条件未達" : "コイン不足";
+  setText(skillDetails.buy,label);
+}
 function renderSkills() {
   byId("skills-locked").hidden = state.tree;
-  byId("skill-nodes").hidden = !state.tree;
+  byId("skill-workspace").hidden = !state.tree;
+  setText(byId("skill-coins"),format(state.coins));
   if (!state.tree) return;
-  for (const talent of talents) {
-    const view = talentViews.get(talent.id);
-    const rank = state.talents[talent.id];
-    const cost = talent.costs[rank];
-    const maxed = cost===undefined;
-    const missing = maxed ? [] : missingPrerequisites(talent,rank+1);
-    const requirements = missing.join("、");
-    const effect = maxed ? talent.detail(rank) : rank ?
-      talent.detail(rank)+" · 次: "+talent.detail(rank+1) : talent.detail(1);
-    view.detail.textContent = "Lv. "+rank+" / "+talent.costs.length+" · "+effect+
-      (requirements ? " · 必要: "+requirements : "");
-    view.button.disabled = maxed || missing.length>0 || state.coins<cost;
-    view.label.textContent = maxed ? "最大" : missing.length ? "条件未達" : rank ? "強化" : "解放";
-    view.price.hidden = maxed;
-    view.price.lastElementChild.textContent = maxed ? "" : short(cost);
-    view.button.title = maxed ? "" : format(cost)+" コイン";
-    view.button.setAttribute("aria-label",talent.title+" "+view.label.textContent+(maxed ? "" : " "+format(cost)+" コイン"));
+  for (const skill of skillNodes) {
+    const isRoot = skill===skillRoot;
+    const rank = skillRank(skill.id);
+    const max = isRoot ? 1 : skill.costs.length;
+    const cost = isRoot ? TREE_PRICE : skill.costs[rank];
+    const requirements = isRoot ? [] : skillRequirements(skill,Math.min(rank+1,max));
+    const blocked = requirements.some(check=>!check.met);
+    const ready = rank<max && !blocked && state.coins>=cost;
+    const status = rank ? "learned" : blocked ? "locked" : ready ? "ready" : "saving";
+    const {node,rank:label} = skillViews.get(skill.id);
+    const rankText = "Lv. "+rank+" / "+max;
+    node.dataset.state = status;
+    node.setAttribute("aria-pressed",String(skill===selectedSkill));
+    node.setAttribute("aria-label",skill.title+" "+rankText+" "+skillStateNames[status]);
+    setText(label,isRoot ? "習得済み" : rankText);
+    if (skill===selectedSkill) renderSkillDetail({cost,requirements,blocked,ready,status});
+  }
+  for (const {parent,talent,path} of skillEdges) {
+    const rank = Math.min(skillRank(talent.id)+1,talent.costs.length);
+    const required = talentParents(talent,rank)[parent];
+    path.dataset.state = !required ? "later" : skillRank(parent)>=required ? "met" : "unmet";
+    path.dataset.selected = String(talent===selectedSkill);
   }
 }
 const feverStage = document.querySelector(".stage");
@@ -1060,6 +1188,11 @@ function buy(item) {
 
 const tabButtons = [...document.querySelectorAll("[data-tab]")];
 function selectTab(tab,focus = false) {
+  const skillsOpen = tab.dataset.tab==="skills";
+  document.querySelector(".game").classList.toggle("skills-open",skillsOpen);
+  feverStage.inert = skillsOpen;
+  if (skillsOpen) pointer = null;
+  if (!skillsOpen && skillDialog.open) skillDialog.close();
   tabButtons.forEach(button=>{
     const selected = button === tab;
     button.setAttribute("aria-selected",String(selected));
@@ -1067,8 +1200,9 @@ function selectTab(tab,focus = false) {
     byId(button.dataset.tab).hidden = !selected;
   });
   document.querySelector(".panel").scrollTop = 0;
-  if (focus) tab.focus();
   renderUI();
+  if (skillsOpen && state.tree) centerSkillNode(selectedSkill.id);
+  if (focus) tab.focus();
 }
 for (const tab of tabButtons) {
   tab.addEventListener("click",()=>selectTab(tab));
@@ -1089,6 +1223,7 @@ byId("reset").addEventListener("click",()=>{
 dialog.addEventListener("close",()=>{
   if (dialog.returnValue !== "reset") return;
   state = fresh();
+  selectedSkill = skillRoot;
   time = 0;
   resetTable();
   applySkin();
@@ -2376,7 +2511,7 @@ canvas.addEventListener("pointerup",event=>{
 function release(event) {if (pointer?.id===event.pointerId) pointer=null;}
 for (const event of ["pointerup","pointercancel","lostpointercapture"]) canvas.addEventListener(event,release);
 document.addEventListener("keydown",event=>{
-  if (event.repeat || dialog.open || (event.code!=="Space" && !(event.key==="Enter" && event.target===canvas))) return;
+  if (event.repeat || dialog.open || skillDialog.open || !byId("skills").hidden || (event.code!=="Space" && !(event.key==="Enter" && event.target===canvas))) return;
   if (event.target!==canvas && (event.target!==document.body || !matchMedia("(pointer:fine)").matches)) return;
   event.preventDefault();
   unlockAudio();
@@ -2410,7 +2545,7 @@ function frame(now) {
       step(1/120);
       carry-=1/120;
     }
-    draw();
+    if (byId("skills").hidden) draw();
     if (uiDirty || (!byId("stats").hidden && now-lastUI>500)) {
       renderUI();
       lastUI=now;

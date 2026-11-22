@@ -107,9 +107,51 @@
         </section>
       </section>
       <section id="skills" class="panel-content" role="tabpanel" aria-labelledby="skills-tab" hidden>
-        <div class="panel-heading"><h2>スキルツリー</h2></div>
-        <p id="skills-locked">ロック中。ダイスショップで1,000コインを使って解放できます。</p>
-        <div id="skill-nodes" hidden></div>
+        <header class="skill-header">
+          <h2>スキルツリー</h2>
+          <div class="skill-wallet"><svg aria-hidden="true"><use href="#i-coin"/></svg><span>所持コイン</span><strong id="skill-coins">0</strong></div>
+        </header>
+        <div id="skills-locked" class="skill-entry">
+          <h3>スキルツリーを解放する</h3>
+          <p>ダイスショップで1,000コインを使うと、各ルートの起点が開きます。</p>
+          <button type="button" id="skill-shop-link">ダイスショップへ</button>
+        </div>
+        <div id="skill-workspace" class="skill-workspace" hidden>
+          <div class="skill-chart">
+            <div class="skill-chart-bar">
+              <nav class="skill-routes" aria-label="ルートへ移動">
+                <button type="button" data-route-node="quality" data-lane="dice">ダイス加工</button>
+                <button type="button" data-route-node="match" data-lane="roll">共鳴・フィーバー</button>
+                <button type="button" data-route-node="arms" data-lane="arms">アーム・衝撃波</button>
+              </nav>
+              <div class="skill-legend" aria-label="ノードの状態">
+                <span data-state="learned">習得済み</span><span data-state="ready">購入可能</span><span data-state="saving">資金不足</span><span data-state="locked">条件未達</span>
+              </div>
+            </div>
+            <div id="skill-viewport" class="skill-viewport" role="region" aria-label="スキルの接続図">
+              <div id="skill-nodes" class="skill-map">
+                <svg id="skill-links" class="skill-links" aria-hidden="true"></svg>
+              </div>
+            </div>
+          </div>
+          <div id="skill-inspector-slot">
+            <article id="skill-inspector" class="skill-inspector" aria-labelledby="skill-detail-title">
+              <button type="button" id="skill-detail-close" class="skill-detail-close" aria-label="詳細を閉じる" hidden>×</button>
+              <span id="skill-detail-icon" class="skill-detail-icon" aria-hidden="true"></span>
+              <h3 id="skill-detail-title" tabindex="-1"></h3>
+              <p id="skill-detail-rank" class="skill-detail-rank"></p>
+              <p id="skill-detail-effect" class="skill-detail-effect"></p>
+              <div id="skill-detail-gates" class="skill-detail-gates">
+                <h4>必要条件</h4>
+                <ul id="skill-detail-prerequisites"></ul>
+              </div>
+              <div id="skill-detail-offer" class="skill-detail-offer">
+                <div><span>必要コイン</span><strong id="skill-detail-price"></strong></div>
+                <button type="button" id="skill-detail-buy"></button>
+              </div>
+            </article>
+          </div>
+        </div>
       </section>
       <section id="collection" class="panel-content" role="tabpanel" aria-labelledby="collection-tab" hidden>
         <div class="panel-heading"><h2>図鑑と実績</h2><p>実績の達成で恒久報酬を獲得できます。</p></div>
@@ -153,5 +195,6 @@
       <div><button value="cancel" autofocus>キャンセル</button><button value="reset" class="danger">リセットする</button></div>
     </form>
   </dialog>
+  <dialog id="skill-detail-dialog" aria-labelledby="skill-detail-title"></dialog>
 </body>
 </html>
