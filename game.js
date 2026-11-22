@@ -70,38 +70,55 @@ const MILESTONE_GROUPS = [
 ];
 const MILESTONE_IDS = new Set(MILESTONE_GROUPS.flatMap(group=>group.targets.map((_,index)=>group.id+"-"+index)));
 const MILESTONE_REWARDS = {income:"獲得コイン",resonance:"共鳴ボーナス",fever:"フィーバー充填"};
+const SPECIAL_CAP_COSTS = {
+  blast:[400,8500,35000,170000,820000],
+  aura:[575,11500,48000,245000,1200000],
+  heat:[500,9500,42000,210000,1000000],
+};
 const talents = [
   {id:"quality",branch:"ダイス",icon:"die",title:"ダイス品質",costs:[140],
     detail:()=>"「ダイス品質」を強化に追加。出目5・6の配当を伸ばす"},
-  {id:"material",branch:"ダイス",icon:"gem",title:"材質加工",costs:[220,2400,18000],
+  {id:"material",branch:"ダイス",icon:"gem",title:"材質加工",costs:[220,12000,145000],
+    progress:(n,s)=>n>1 ? materialRequirement(n-1,s) : "",
     detail:n=>materials[n].name+"までの材質進化を強化に追加"},
-  {id:"materialStart",branch:"ダイス",icon:"die",title:"材質の下地",costs:[2300,12500],requires:n=>({material:n}),
+  {id:"materialStart",branch:"ダイス",icon:"die",title:"材質の下地",costs:[6000,70000],requires:n=>({material:n}),
+    progress:(n,s)=>materialRequirement(n,s),
     detail:n=>"新しく購入するダイスは"+materials[n].name+"から開始"},
-  {id:"merge",branch:"ダイス",icon:"gem",title:"ダイス合成",costs:[320],
+  {id:"merge",branch:"ダイス",icon:"gem",title:"ダイス合成",costs:[420],
+    progress:(_,s)=>progressRequirement("ダイス（合成前換算）",dicePriceBasis(s),2),
     detail:()=>"同じ材質・タイプ・星の2個を合成できる"},
-  {id:"income",branch:"配当と連鎖",icon:"coin",title:"配当アップ",costs:[480,1400,4200,12000],
+  {id:"income",branch:"配当と連鎖",icon:"coin",title:"配当アップ",costs:[650,4800,36000,235000],
+    progress:(n,s)=>progressRequirement("基礎収益アップ Lv.",s.baseIncome,[0,3,5,7][n-1]),
     detail:n=>"基礎配当 ＋"+20*n+"%"},
   {id:"match",branch:"配当と連鎖",icon:"wave",title:"共鳴",costs:[100],
     detail:()=>"近いタイミングに同じ目が出ると共鳴する"},
-  {id:"resonance",branch:"配当と連鎖",icon:"wave",title:"共鳴配当",costs:[480,1800,6500],requires:{match:1},
+  {id:"resonance",branch:"配当と連鎖",icon:"wave",title:"共鳴配当",costs:[700,7000,52000],requires:{match:1},
+    progress:(n,s)=>progressRequirement("最大共鳴コンボ",s.best,[0,3,6][n-1]),
     detail:n=>"共鳴ボーナス ＋"+25*n+"%"},
-  {id:"feverMode",branch:"配当と連鎖",icon:"speed",title:"フィーバー",costs:[480],requires:{match:1},
+  {id:"feverMode",branch:"配当と連鎖",icon:"speed",title:"フィーバー",costs:[850],requires:{match:1},
+    progress:(_,s)=>progressRequirement("累計共鳴",s.resonances,3),
     detail:()=>"共鳴などで充填するフィーバーゲージを追加"},
-  {id:"fever",branch:"配当と連鎖",icon:"speed",title:"熱気の蓄積",costs:[800,2800,9500],requires:{feverMode:1},
+  {id:"fever",branch:"配当と連鎖",icon:"speed",title:"熱気の蓄積",costs:[1800,16500,130000],requires:{feverMode:1},
+    progress:(n,s)=>progressRequirement("フィーバー発動",s.feverStarts,[1,4,12][n-1]),
     detail:n=>"共鳴によるゲージ充填 ＋"+20*n+"%"},
   {id:"wave",branch:"テーブルとアーム",icon:"wave",title:"手動衝撃波",costs:[120],
     detail:()=>"「テーブル衝撃波」を強化に追加"},
   {id:"arms",branch:"テーブルとアーム",icon:"arm",title:"ロボットアーム",costs:[180],
     detail:()=>"「ロボットアーム」を強化に追加"},
-  {id:"speed",branch:"テーブルとアーム",icon:"speed",title:"アーム速度",costs:[390],requires:{arms:1},
+  {id:"speed",branch:"テーブルとアーム",icon:"speed",title:"アーム速度",costs:[900],requires:{arms:1},
+    progress:(_,s)=>progressRequirement("アーム雇用",s.arms,1),
     detail:()=>"「アーム速度」を強化に追加"},
-  {id:"chain",branch:"テーブルとアーム",icon:"arm",title:"近接ダイス連鎖",costs:[900,3000,11000],requires:{arms:1},
+  {id:"chain",branch:"テーブルとアーム",icon:"arm",title:"近接ダイス連鎖",costs:[2400,19000,145000],requires:{arms:1},
+    progress:(n,s)=>progressRequirement("アーム雇用",s.arms,1) ||
+      progressRequirement("ダイス（合成前換算）",dicePriceBasis(s),[3,5,8][n-1]),
     detail:n=>n+" 段まで連鎖し、1作動につき最大 "+2*n+" 個を追加で投擲"},
-  {id:"armWave",branch:"テーブルとアーム",icon:"wave",title:"アーム衝撃波",costs:[8500],requires:{chain:1,wave:1},
+  {id:"armWave",branch:"テーブルとアーム",icon:"wave",title:"アーム衝撃波",costs:[95000],requires:{chain:2,wave:1},
+    progress:(_,s)=>progressRequirement("テーブル衝撃波 Lv.",s.wave,1),
     detail:()=>"アームの主投擲で衝撃波を1回発生。衝撃波Lv.で範囲が広がる"},
   ...Object.entries(SPECIAL_DICE).map(([type,special])=>({
     id:special.skill,branch:"特殊ダイス",icon:special.icon,title:special.name,
-    costs:[Math.ceil(special.cost/2),1800,4500,11000,26000],requires:type==="heat" ? {feverMode:1} : undefined,
+    costs:SPECIAL_CAP_COSTS[type],requires:type==="heat" ? {feverMode:1} : undefined,
+    progress:(n,s)=>progressRequirement("同種のダイス（合成前換算）",specialDiceBasis(s,type),n-1),
     detail:n=>n===1 ? "ショップに追加 · 同時に1個まで" : "同時に "+n+" 個まで",
   })),
 ];
@@ -150,6 +167,10 @@ function armInterval() {return interval(state.speed)/feverMultiplier();}
 function dicePriceBasis(progress) {
   // Each merge preserves the number of original dice represented by its two inputs.
   return progress.dieStars.reduce((count,stars)=>count+2**(stars-1),0);
+}
+function specialDiceBasis(progress,type) {
+  return progress.dieSpecials.reduce((total,value,index)=>
+    total+(value===type ? 2**(progress.dieStars[index]-1) : 0),0);
 }
 function normalDiceBasis(progress) {
   return progress.dieStars.reduce((count,stars,slot)=>count+(progress.dieSpecials[slot] ? 0 : 2**(stars-1)),0);
@@ -487,8 +508,7 @@ function specialOffer(type) {
   const special = SPECIAL_DICE[type];
   const count = state.dieSpecials.filter(value=>value===type).length;
   const limit = state.talents[special.skill];
-  const basis = state.dieSpecials.reduce((total,value,index)=>
-    total+(value===type ? 2**(state.dieStars[index]-1) : 0),0);
+  const basis = specialDiceBasis(state,type);
   const rosterFactor = 1+.045*Math.max(0,dicePriceBasis(state)-4);
   const typeFactor = 1.65**Math.min(basis,8)*(1+.12*Math.max(0,basis-8));
   return {count,limit,price:Math.ceil(special.cost*typeFactor*rosterFactor)};
@@ -811,9 +831,19 @@ for (const branch of new Set(talents.map(talent=>talent.branch))) {
   }
   byId("skill-nodes").append(group);
 }
+function progressRequirement(label,current,target) {
+  return current<target ? label+" "+format(current)+" / "+format(target) : "";
+}
+function materialRequirement(rank,progress) {
+  return progress.collection.includes("material-"+rank) ? "" : materials[rank].name+"を図鑑に登録";
+}
 function missingPrerequisites(talent, rank) {
   const required = typeof talent.requires==="function" ? talent.requires(rank) : talent.requires;
-  return Object.entries(required ?? {}).filter(([id,level])=>state.talents[id]<level);
+  const missing = Object.entries(required ?? {}).filter(([id,level])=>state.talents[id]<level)
+    .map(([id,level])=>talentById.get(id).title+" Lv."+level);
+  const progress = talent.progress?.(rank,state);
+  if (progress) missing.push(progress);
+  return missing;
 }
 function buyTalent(talent) {
   const rank = state.talents[talent.id];
@@ -856,7 +886,7 @@ function renderSkills() {
     const cost = talent.costs[rank];
     const maxed = cost===undefined;
     const missing = maxed ? [] : missingPrerequisites(talent,rank+1);
-    const requirements = missing.map(([id,level])=>talentById.get(id).title+" Lv."+level).join("、");
+    const requirements = missing.join("、");
     const effect = maxed ? talent.detail(rank) : rank ?
       talent.detail(rank)+" · 次: "+talent.detail(rank+1) : talent.detail(1);
     view.detail.textContent = "Lv. "+rank+" / "+talent.costs.length+" · "+effect+
@@ -865,6 +895,7 @@ function renderSkills() {
     view.label.textContent = maxed ? "最大" : missing.length ? "条件未達" : rank ? "強化" : "解放";
     view.price.hidden = maxed;
     view.price.lastElementChild.textContent = maxed ? "" : short(cost);
+    view.button.title = maxed ? "" : format(cost)+" コイン";
     view.button.setAttribute("aria-label",talent.title+" "+view.label.textContent+(maxed ? "" : " "+format(cost)+" コイン"));
   }
 }
