@@ -7,17 +7,19 @@ const backdrop = document.createElement("canvas");
 const backdropCtx = backdrop.getContext("2d");
 const materials = [
   {name:"木製", multiplier:1, high:"#ffe0a8", low:"#c88c51", side:"#9c5d36", edge:"#5d3322", pip:"#452c22"},
-  {name:"象牙", multiplier:3, high:"#fffbea", low:"#d4c5a6", side:"#ae9974", edge:"#756442", pip:"#2b3c32"},
-  {name:"黄金", multiplier:9, high:"#fff4a1", low:"#e9a838", side:"#b46b1b", edge:"#71461d", pip:"#553016"},
-  {name:"ネオンレーザー", multiplier:28, high:"#2c816e", low:"#133e42", side:"#172a3c", edge:"#74ffe2", pip:"#a9ffee"},
+  {name:"銅製", multiplier:3, high:"#ffd1ae", low:"#c17556", side:"#a05239", edge:"#60392d", pip:"#542d25"},
+  {name:"鉄製", multiplier:9, high:"#edf2f5", low:"#9aaab5", side:"#6f828e", edge:"#445761", pip:"#253840"},
+  {name:"金製", multiplier:28, high:"#fff4a1", low:"#e9a838", side:"#b46b1b", edge:"#71461d", pip:"#553016"},
 ];
-const caps = {dice:40, material:3, arms:6, speed:7, wave:8};
-const VIP_TARGET = 40000;
+const caps = {dice:40, material:3, arms:6, speed:7, wave:8, baseIncome:12, quality:5};
+const TREE_PRICE = 1000;
+const SAVE_VERSION = 2;
+const LEGACY_CHIP_VALUE = 250;
 const MATERIAL_PRICES = [85,900,6200];
 const SPECIAL_DICE = {
-  blast:{name:"爆裂ダイス",mark:"爆",icon:"wave",color:"#ff9d63",cost:800,detail:"出目5・6で周囲に爆裂波を放つ"},
-  aura:{name:"増幅ダイス",mark:"増",icon:"gem",color:"#90eed0",cost:1150,detail:"静止中、近くの他のダイスの配当を25%増やす"},
-  heat:{name:"熱気ダイス",mark:"熱",icon:"speed",color:"#ffe08a",cost:1000,detail:"出目4〜6でフィーバーゲージを6ポイント加算"},
+  blast:{skill:"specialBlast",name:"爆裂ダイス",mark:"爆",icon:"wave",color:"#ff9d63",cost:800,detail:"出目5・6で周囲に爆裂波を放つ"},
+  aura:{skill:"specialAura",name:"増幅ダイス",mark:"増",icon:"gem",color:"#90eed0",cost:1150,detail:"静止中、近くの他のダイスの配当を25%増やす"},
+  heat:{skill:"specialHeat",name:"熱気ダイス",mark:"熱",icon:"speed",color:"#ffe08a",cost:1000,detail:"出目4〜6でフィーバーゲージを6ポイント加算"},
 };
 const STAR_RANKS = [
   {pay:1,size:1,pulse:0,targets:0,match:0,heat:0,color:"#e5cc96"},
@@ -28,21 +30,20 @@ const STAR_RANKS = [
 const MERGE_PRICES = [12,175,1800];
 const MERGE_MATERIAL_FACTORS = [1,2.4,6,14];
 const MAX_STARS = STAR_RANKS.length;
-const SPECIAL_LIMIT = MAX_STARS;
 const FUSION_IMPACT = .40;
 const FUSION_DURATION = .82;
 const MASTERY = [
-  {track:"masteryNeon",name:"ネオンレーザーの★4を作る",target:4,reward:3},
-  {track:"masterySpecial",name:"特殊ダイスの★4を作る",target:4,reward:2},
-  {track:"masteryBurst",name:"1回のフィーバーで8回バースト",target:8,reward:4},
+  {track:"masteryGold",name:"金製の★4を作る",target:4},
+  {track:"masterySpecial",name:"特殊ダイスの★4を作る",target:4},
+  {track:"masteryBurst",name:"1回のフィーバーで8回バースト",target:8},
 ];
 const ALL_MASTERY = (1<<MASTERY.length)-1;
 const skins = [
   {id:"classic",name:"クラシックグリーン",unlock:0,felt:["#367054","#265b44","#133f33"],inlay:"#d9c48a",
     rail:["#9d6848","#72462f","#9d6441","#78432e","#563220"],lip:["#5d3727","#613827","#47271e","#2b1915"]},
-  {id:"royal",name:"ロイヤルレッド",unlock:1,felt:["#863a46","#672a37","#421b29"],inlay:"#f2bd76",
+  {id:"royal",name:"ロイヤルレッド",unlock:10000,felt:["#863a46","#672a37","#421b29"],inlay:"#f2bd76",
     rail:["#a77346","#6b3a2a","#925537","#603123","#41211e"],lip:["#77462b","#683529","#462423","#301819"]},
-  {id:"cyber",name:"サイバーネオン",unlock:3,felt:["#205c66","#174453","#102c3e"],inlay:"#76ffe0",
+  {id:"cyber",name:"サイバーネオン",unlock:150000,felt:["#205c66","#174453","#102c3e"],inlay:"#76ffe0",
     rail:["#48747e","#223b51","#365f69","#25374a","#152637"],lip:["#294455","#243c50","#192d41","#122133"]},
   {id:"aurora",name:"オーロラブラック",mastery:true,felt:["#254a49","#172b32","#111925"],inlay:"#ffd38e",
     rail:["#816e50","#2f3540","#43505b","#2a3138","#191f28"],lip:["#454052","#283342","#171d2a","#101721"]},
@@ -55,7 +56,7 @@ const COLLECTION_GROUPS = [
   {name:"到達した星",entries:STAR_RANKS.map((star,index)=>({id:"star-"+(index+1),icon:"gem",
     name:"★"+(index+1),detail:"星の配当 ×"+star.pay+(star.targets ? " · 着地波 最大"+star.targets+"個" : " · 初期ランク")}))},
   {name:"テーブルスキン",entries:skins.map(skin=>({id:"skin-"+skin.id,icon:"gem",name:skin.name,
-    detail:skin.mastery ? "ネオンマスタリー全達成" : skin.unlock ? "VIP転生 "+skin.unlock+"回" : "初期テーブル"}))},
+    detail:skin.mastery ? "テーブルマスタリー全達成" : skin.unlock ? "累計 "+skin.unlock.toLocaleString("ja-JP")+" コイン" : "初期テーブル"}))},
 ];
 const COLLECTION_IDS = new Set(COLLECTION_GROUPS.flatMap(group=>group.entries.map(entry=>entry.id)));
 const MILESTONE_GROUPS = [
@@ -64,41 +65,64 @@ const MILESTONE_GROUPS = [
   {id:"feverStarts",name:"フィーバー発動",unit:"回",targets:[1,10,50],reward:"fever",rate:2},
   {id:"merges",name:"累計合成",unit:"回",targets:[1,12,60],reward:"income",rate:1},
   {id:"highestStar",name:"到達した星",unit:"★",targets:[2,3,4],reward:"resonance",rate:1},
-  {id:"prestiges",name:"VIP転生",unit:"回",targets:[1,3,8],reward:"income",rate:1},
+  {id:"skills",name:"習得したスキル",unit:"種",targets:[1,3,8],reward:"income",rate:1},
   {id:"collection",name:"図鑑収集",unit:"種",targets:[5,10,15],reward:"income",rate:1},
 ];
 const MILESTONE_IDS = new Set(MILESTONE_GROUPS.flatMap(group=>group.targets.map((_,index)=>group.id+"-"+index)));
 const MILESTONE_REWARDS = {income:"獲得コイン",resonance:"共鳴ボーナス",fever:"フィーバー充填"};
 const talents = [
-  {id:"bankroll",branch:"スタートダッシュ",icon:"coin",title:"準備金",costs:[1,2,3],
-    detail:n=>"次の転生時に初期コイン ＋"+20*n},
-  {id:"dice",branch:"スタートダッシュ",icon:"die",title:"予備ダイス",costs:[1,2,4],requires:"bankroll",
-    detail:n=>"次の転生時に初期ダイス ＋"+n+" 個"},
-  {id:"income",branch:"収益・フィーバー",icon:"coin",title:"配当アップ",costs:[1,2,4,6],
-    detail:n=>"通常・放置の獲得コイン ＋"+20*n+"%"},
-  {id:"resonance",branch:"収益・フィーバー",icon:"wave",title:"共鳴配当",costs:[1,2,3],requires:"income",
+  {id:"quality",branch:"ダイス",icon:"die",title:"ダイス品質",costs:[140],
+    detail:()=>"「ダイス品質」を強化に追加。出目5・6の配当を伸ばす"},
+  {id:"material",branch:"ダイス",icon:"gem",title:"材質加工",costs:[220,2400,18000],
+    detail:n=>materials[n].name+"までの材質進化を強化に追加"},
+  {id:"materialStart",branch:"ダイス",icon:"die",title:"材質の下地",costs:[2300,12500],requires:n=>({material:n}),
+    detail:n=>"新しく購入するダイスは"+materials[n].name+"から開始"},
+  {id:"merge",branch:"ダイス",icon:"gem",title:"ダイス合成",costs:[320],
+    detail:()=>"同じ材質・タイプ・星の2個を合成できる"},
+  {id:"income",branch:"配当と連鎖",icon:"coin",title:"配当アップ",costs:[480,1400,4200,12000],
+    detail:n=>"基礎配当 ＋"+20*n+"%"},
+  {id:"match",branch:"配当と連鎖",icon:"wave",title:"共鳴",costs:[100],
+    detail:()=>"近いタイミングに同じ目が出ると共鳴する"},
+  {id:"resonance",branch:"配当と連鎖",icon:"wave",title:"共鳴配当",costs:[480,1800,6500],requires:{match:1},
     detail:n=>"共鳴ボーナス ＋"+25*n+"%"},
-  {id:"fever",branch:"収益・フィーバー",icon:"speed",title:"熱気の蓄積",costs:[1,2,3],requires:"income",
-    detail:n=>"共鳴時のゲージ獲得 ＋"+20*n+"%"},
-  {id:"chain",branch:"アーム連鎖",icon:"arm",title:"近接ダイス連鎖",costs:[1,2,3],
+  {id:"feverMode",branch:"配当と連鎖",icon:"speed",title:"フィーバー",costs:[480],requires:{match:1},
+    detail:()=>"共鳴などで充填するフィーバーゲージを追加"},
+  {id:"fever",branch:"配当と連鎖",icon:"speed",title:"熱気の蓄積",costs:[800,2800,9500],requires:{feverMode:1},
+    detail:n=>"共鳴によるゲージ充填 ＋"+20*n+"%"},
+  {id:"wave",branch:"テーブルとアーム",icon:"wave",title:"手動衝撃波",costs:[120],
+    detail:()=>"「テーブル衝撃波」を強化に追加"},
+  {id:"arms",branch:"テーブルとアーム",icon:"arm",title:"ロボットアーム",costs:[180],
+    detail:()=>"「ロボットアーム」を強化に追加"},
+  {id:"speed",branch:"テーブルとアーム",icon:"speed",title:"アーム速度",costs:[390],requires:{arms:1},
+    detail:()=>"「アーム速度」を強化に追加"},
+  {id:"chain",branch:"テーブルとアーム",icon:"arm",title:"近接ダイス連鎖",costs:[900,3000,11000],requires:{arms:1},
     detail:n=>n+" 段まで連鎖し、1作動につき最大 "+2*n+" 個を追加で投擲"},
-  {id:"armWave",branch:"アーム連鎖",icon:"wave",title:"アーム衝撃波",costs:[8],requires:"chain",
+  {id:"armWave",branch:"テーブルとアーム",icon:"wave",title:"アーム衝撃波",costs:[8500],requires:{chain:1,wave:1},
     detail:()=>"アームの主投擲で衝撃波を1回発生。衝撃波Lv.で範囲が広がる"},
-  {id:"materialPermit",branch:"材質",icon:"gem",title:"材質ライセンス",costs:[1],
-    detail:()=>"黄金・ネオンへの進化に必須。全ダイスの材質条件も必要"},
-  {id:"materialStart",branch:"材質",icon:"die",title:"材質の下地",costs:[2,4],
-    detail:n=>"解放・強化した時点から、新しく生成・購入するダイスは"+materials[n].name},
+  ...Object.entries(SPECIAL_DICE).map(([type,special])=>({
+    id:special.skill,branch:"特殊ダイス",icon:special.icon,title:special.name,
+    costs:[Math.ceil(special.cost/2),1800,4500,11000,26000],requires:type==="heat" ? {feverMode:1} : undefined,
+    detail:n=>n===1 ? "ショップに追加 · 同時に1個まで" : "同時に "+n+" 個まで",
+  })),
 ];
+const talentById = new Map(talents.map(talent=>[talent.id,talent]));
 const upgrades = [
-  {key:"dice", icon:"die", title:"ダイス購入", action:"購入",
-    cost:s=>dicePurchasePrice(dicePriceBasis(s)),
-    detail:s=>s.dice+" / "+caps.dice+" 個 · 価格基準 "+dicePriceBasis(s)+" 個分"},
-  {key:"material", icon:"gem", title:"ダイスの材質", action:"1個進化"},
-  {key:"arms", icon:"arm", title:"ロボットアーム", action:"雇用", cost:s=>85*2.85**s.arms,
+  {key:"dice", shop:true, icon:"die", title:"通常ダイス", action:"購入",
+    cost:s=>dicePurchasePrice(normalDiceBasis(s)),
+    detail:s=>"初期材質 "+materials[s.talents.materialStart].name+" · 価格基準 "+normalDiceBasis(s)+" 個分"},
+  {key:"tree",shop:true,icon:"gem",title:"スキルツリー解放",action:"解放",cost:()=>TREE_PRICE,
+    detail:()=>"共鳴・材質加工・自動化などのスキルを解放できる"},
+  {key:"baseIncome",icon:"coin",title:"基礎収益アップ",action:"強化",
+    cost:s=>[18,60,155,360][s.baseIncome] ?? 780*2.4**(s.baseIncome-4),
+    detail:s=>"Lv. "+s.baseIncome+" · 基礎配当 ＋"+35*s.baseIncome+"%（1Lv.ごとに＋35%）"},
+  {key:"quality",skill:"quality",icon:"die",title:"ダイス品質",action:"強化",cost:s=>150*2.5**s.quality,
+    detail:s=>"Lv. "+s.quality+" · 出目5・6の配当 ＋"+15*s.quality+"%"},
+  {key:"material",skill:"material",icon:"gem",title:"ダイスの材質",action:"1個進化"},
+  {key:"arms",skill:"arms",icon:"arm",title:"ロボットアーム",action:"雇用",cost:s=>85*2.85**s.arms,
     detail:s=>s.arms+" / 6 基 · "+(s.talents.armWave ? "主投擲で衝撃波" : s.talents.chain ? "1個を投擲し、近くへ連鎖" : "1作動につきダイス1個")},
-  {key:"speed", icon:"speed", title:"アーム速度", action:"強化", cost:s=>165*2.05**s.speed,
+  {key:"speed",skill:"speed",icon:"speed",title:"アーム速度",action:"強化",cost:s=>165*2.05**s.speed,
     detail:s=>s.arms ? "Lv. "+s.speed+" · "+armInterval().toFixed(1)+" 秒ごとに作動" : "ロボットアームを雇うと解放"},
-  {key:"wave", icon:"wave", title:"テーブル衝撃波", action:s=>s.wave ? "強化" : "解放",
+  {key:"wave",skill:"wave",icon:"wave",title:"テーブル衝撃波",action:s=>s.wave ? "強化" : "有効化",
     cost:s=>s.wave<2 ? [22,72][s.wave] : 150*1.90**(s.wave-2),
     detail:s=>s.wave ? "Lv. "+s.wave+" · 手動で短辺の "+(waveRange(s.wave)*100).toFixed(1).replace(/\.0$/,"")+"% まで巻き込む" :
       "Lv. 0 · 近くのダイスも一緒に振れる"},
@@ -108,11 +132,7 @@ const RESONANCE_WINDOW = .8;
 const FEVER_DURATION = 10;
 const SHAKE_COOLDOWN = .85;
 const SHAKE_DURATION = .24;
-const SLAM_COOLDOWN = 2.5;
-const SLAM_RANGE = .30;
-const HOLD_DURATION = 14;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-const coarsePointer = matchMedia("(pointer:coarse)");
 const number = new Intl.NumberFormat("ja-JP");
 const compact = new Intl.NumberFormat("ja-JP",{notation:"compact",maximumFractionDigits:1});
 const format = value => number.format(Math.floor(value));
@@ -131,7 +151,11 @@ function dicePriceBasis(progress) {
   // Each merge preserves the number of original dice represented by its two inputs.
   return progress.dieStars.reduce((count,stars)=>count+2**(stars-1),0);
 }
+function normalDiceBasis(progress) {
+  return progress.dieStars.reduce((count,stars,slot)=>count+(progress.dieSpecials[slot] ? 0 : 2**(stars-1)),0);
+}
 function dicePurchasePrice(basis) {
+  if (!basis) return 9;
   if (basis<5) return [9,17,40,76][basis-1];
   const early = Math.min(basis,36);
   const middle = clamp(basis-36,0,20);
@@ -139,7 +163,9 @@ function dicePurchasePrice(basis) {
   return 128*1.22**(early-5)*1.16**Math.max(0,early-9)*1.16**middle*(1+late/18)**2.45;
 }
 function rollValue(face,rank = 0,stars = 1) {
-  return Math.round(face*materials[rank].multiplier*STAR_RANKS[stars-1].pay*(1+.2*state.talents.income));
+  const quality = face>=5 ? 1+.15*state.quality : 1;
+  return Math.round(face*materials[rank].multiplier*STAR_RANKS[stars-1].pay*
+    (1+.35*state.baseIncome)*(1+.2*state.talents.income)*quality);
 }
 function starStats(die) {return STAR_RANKS[state.dieStars[die.slot]-1];}
 function normalizeStars(stars) {
@@ -155,12 +181,51 @@ function normalizeMaterial(rank,fallback = 0) {
   return Number.isFinite(rank) ? clamp(Math.floor(rank),0,caps.material) : fallback;
 }
 function fresh() {
-  return {coins:0,dice:1,dieMaterials:[0],dieSpecials:[null],dieStars:[1],arms:0,speed:0,wave:0,rolls:0,resonances:0,
-    best:0,earned:0,seconds:0,muted:false,feverCharge:0,feverLeft:0,runEarned:0,
-    vipChips:0,prestiges:0,skin:0,feverBurstRolls:0,masteryNeon:0,masterySpecial:0,masteryBurst:0,masteryRewards:0,
+  return {version:SAVE_VERSION,tree:false,coins:0,dice:1,dieMaterials:[0],dieSpecials:[null],dieStars:[1],
+    baseIncome:0,quality:0,arms:0,speed:0,wave:0,rolls:0,resonances:0,
+    best:0,earned:0,seconds:0,muted:false,feverCharge:0,feverLeft:0,
+    skin:0,feverBurstRolls:0,masteryGold:0,masterySpecial:0,masteryBurst:0,masteryRewards:0,
     collection:[],achievements:[],highestStar:1,merges:0,feverStarts:0,feverCoins:0,bestFeverCoins:0,bestFeverBursts:0,
     talents:Object.fromEntries(talents.map(talent=>[talent.id,0])),
     savedAt:Date.now()};
+}
+function migrateLegacy(progress,raw) {
+  const ranks = progress.talents;
+  const legacyCount = Number.isFinite(raw.prestiges) ? raw.prestiges : 0;
+  const legacyGold = Number.isFinite(raw.masteryNeon) ? clamp(Math.floor(raw.masteryNeon),0,MAX_STARS) : 0;
+  progress.masteryGold = Math.max(progress.masteryGold,legacyGold);
+  if (legacyGold) progress.highestStar = Math.max(progress.highestStar,legacyGold);
+  const licensedTier = raw.talents?.materialPermit>0 ? (legacyCount>0 ? 3 : 2) : 0;
+  ranks.material = Math.max(...progress.dieMaterials,ranks.materialStart,licensedTier,
+    progress.collection.includes("material-3") ? 3 : progress.collection.includes("material-2") ? 2 :
+      progress.collection.includes("material-1") ? 1 : 0,legacyGold ? 3 : 0);
+  ranks.wave = Number(!!(progress.wave || ranks.armWave));
+  ranks.arms = Number(!!(progress.arms || progress.speed || ranks.chain || ranks.armWave));
+  ranks.speed = Number(progress.speed>0);
+  if (ranks.armWave) ranks.chain = Math.max(1,ranks.chain);
+  ranks.merge = Number(progress.merges>0 || progress.highestStar>1);
+  for (const [type,special] of Object.entries(SPECIAL_DICE)) {
+    ranks[special.skill] = Math.max(progress.dieSpecials.filter(value=>value===type).length,
+      Number(progress.collection.includes("special-"+type)));
+  }
+  ranks.feverMode = Number(!!(progress.feverStarts || progress.feverLeft || ranks.fever || ranks.specialHeat));
+  ranks.match = Number(!!(progress.resonances || progress.best || ranks.resonance || ranks.feverMode));
+  [1,3,8].forEach((target,index)=>{
+    const id = "skills-"+index;
+    if (legacyCount>=target && !progress.achievements.includes(id)) progress.achievements.push(id);
+  });
+  if (legacyCount>=1 && !progress.collection.includes("skin-royal")) progress.collection.push("skin-royal");
+  if (legacyCount>=3 && !progress.collection.includes("skin-cyber")) progress.collection.push("skin-cyber");
+  const refund = (id,costs)=>{
+    const rank = raw.talents?.[id];
+    return costs.slice(0,Number.isFinite(rank) ? clamp(Math.floor(rank),0,costs.length) : 0)
+      .reduce((total,cost)=>total+cost,0);
+  };
+  const chips = Number.isFinite(raw.vipChips) ? Math.max(0,Math.floor(raw.vipChips)) : 0;
+  const refundedChips = refund("bankroll",[1,2,3])+refund("dice",[1,2,4]);
+  progress.coins = Math.min(Number.MAX_SAFE_INTEGER,progress.coins+
+    (chips+refundedChips)*LEGACY_CHIP_VALUE);
+  progress.tree = legacyCount>0 || chips>0 || refundedChips>0 || Object.values(ranks).some(Boolean);
 }
 let storageOK = true;
 function load() {
@@ -169,8 +234,8 @@ function load() {
     const raw = JSON.parse(localStorage.getItem(SAVE));
     if (!raw || typeof raw !== "object") return initial;
     for (const key of Object.keys(initial)) {
-      if (key === "talents" || Array.isArray(initial[key])) continue;
-      if (key === "muted") initial[key] = raw[key] === true;
+      if (key === "talents" || key === "version" || Array.isArray(initial[key])) continue;
+      if (key === "muted" || key === "tree") initial[key] = raw[key] === true;
       else if (key === "feverLeft" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,FEVER_DURATION);
       else if (key === "feverCharge" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,99.99);
       else if (Number.isFinite(raw[key])) {
@@ -178,7 +243,6 @@ function load() {
         initial[key] = clamp(key === "seconds" ? raw[key] : Math.floor(raw[key]),key === "dice" ? 1 : 0,max);
       }
     }
-    if (!Number.isFinite(raw.runEarned)) initial.runEarned = initial.earned;
     for (const talent of talents) {
       const rank = raw.talents?.[talent.id];
       if (Number.isFinite(rank)) initial.talents[talent.id] = clamp(Math.floor(rank),0,talent.costs.length);
@@ -190,25 +254,30 @@ function load() {
     const specials = Array.isArray(raw.dieSpecials) ? raw.dieSpecials : [];
     const stars = Array.isArray(raw.dieStars) ? raw.dieStars : [];
     initial.dieStars = Array.from({length:initial.dice},(_,i)=>normalizeStars(stars[i]));
-    initial.highestStar = normalizeStars(Math.max(initial.highestStar,initial.masteryNeon,initial.masterySpecial,...initial.dieStars));
-    initial.merges = Math.max(initial.merges,2**(initial.highestStar-1)-1,
-      initial.dieStars.reduce((total,star)=>total+2**(star-1)-1,0));
+    initial.highestStar = normalizeStars(Math.max(initial.highestStar,initial.masteryGold,
+      initial.masterySpecial,...initial.dieStars));
+    initial.merges = Math.max(initial.merges,initial.dieStars.reduce((total,star)=>total+2**(star-1)-1,0));
     initial.bestFeverBursts = Math.max(initial.bestFeverBursts,initial.masteryBurst,initial.feverBurstRolls);
     if (initial.feverLeft || initial.bestFeverBursts || initial.bestFeverCoins) initial.feverStarts = Math.max(1,initial.feverStarts);
     if (!initial.feverLeft) initial.feverCoins = 0;
     initial.bestFeverCoins = Math.max(initial.bestFeverCoins,initial.feverCoins);
     initial.collection = Array.isArray(raw.collection) ? [...new Set(raw.collection.filter(id=>COLLECTION_IDS.has(id)))] : [];
-    initial.achievements = Array.isArray(raw.achievements) ? [...new Set(raw.achievements.filter(id=>MILESTONE_IDS.has(id)))] : [];
+    initial.achievements = Array.isArray(raw.achievements) ? [...new Set(raw.achievements
+      .map(id=>typeof id==="string" ? id.replace(/^prestiges-/,"skills-") : id)
+      .filter(id=>MILESTONE_IDS.has(id)))] : [];
     const installed = new Map();
     initial.dieSpecials = Array.from({length:initial.dice},(_,i)=>{
       const type = specials[i];
       if (typeof type!=="string" || !Object.hasOwn(SPECIAL_DICE,type)) return null;
       const count = installed.get(type) ?? 0;
-      if (count>=SPECIAL_LIMIT) return null;
+      if (count>=5) return null;
       installed.set(type,count+1);
       return type;
     });
     initial.masteryRewards = Math.min(ALL_MASTERY,initial.masteryRewards);
+    if (!Number.isFinite(raw.version) || raw.version<SAVE_VERSION) migrateLegacy(initial,raw);
+    initial.merges = Math.max(initial.merges,2**(initial.highestStar-1)-1);
+    if (!initial.talents.feverMode) initial.feverLeft = initial.feverCharge = initial.feverCoins = 0;
     if (!initial.feverLeft) initial.feverBurstRolls = 0;
     if (!skins[initial.skin] || !skinAvailable(skins[initial.skin],initial)) initial.skin = 0;
   } catch {
@@ -227,8 +296,7 @@ let streak = 0, lastCrit = -Infinity, shakeStart = -Infinity, shakeAmplitude = 0
 let markedDie = null, markedUntil = 0;
 let fusions = [];
 let burstUntil = 0, burstPayout = 0;
-let held = null, holdMode = false, slamReady = 0, impactTime = -Infinity, hitStop = 0;
-let throwStatus = "", throwStatusUntil = 0;
+let impactTime = -Infinity, hitStop = 0;
 let pointer = null;
 let uiDirty = true;
 let noticeTimer;
@@ -252,18 +320,23 @@ function announce(message) {
 }
 function credit(amount) {
   state.coins = Math.min(Number.MAX_SAFE_INTEGER,state.coins+amount);
+  const before = state.earned;
   state.earned = Math.min(Number.MAX_SAFE_INTEGER,state.earned+amount);
-  state.runEarned = Math.min(Number.MAX_SAFE_INTEGER,state.runEarned+amount);
+  if (skins.some(skin=>skin.unlock>before && skin.unlock<=state.earned)) {
+    recordCollection();
+    awardMilestones();
+  }
   uiDirty = true;
 }
 function skinAvailable(skin,progress = state) {
-  return skin.mastery ? progress.prestiges>=3 && progress.masteryRewards===ALL_MASTERY : progress.prestiges>=skin.unlock;
+  return progress.collection.includes("skin-"+skin.id) ||
+    (skin.mastery ? progress.masteryRewards===ALL_MASTERY : progress.earned>=skin.unlock);
 }
 function recordCollection() {
   const entries = new Set(state.collection);
   state.highestStar = Math.max(state.highestStar,...state.dieStars);
   for (const rank of state.dieMaterials) entries.add("material-"+rank);
-  if (state.masteryNeon) entries.add("material-3");
+  if (state.masteryGold) entries.add("material-3");
   for (const type of state.dieSpecials) if (type) entries.add("special-"+type);
   for (let star=1;star<=state.highestStar;star++) entries.add("star-"+star);
   for (const skin of skins) if (skinAvailable(skin)) entries.add("skin-"+skin.id);
@@ -272,7 +345,9 @@ function recordCollection() {
   uiDirty = true;
 }
 function milestoneValue(group) {
-  return group.id==="collection" ? state.collection.length : state[group.id];
+  if (group.id==="collection") return state.collection.length;
+  if (group.id==="skills") return Object.values(state.talents).filter(Boolean).length;
+  return state[group.id];
 }
 function milestoneBonus() {
   if (cachedAchievements===state.achievements && cachedAchievementCount===state.achievements.length) return cachedBonus;
@@ -314,35 +389,31 @@ function milestoneTarget(group,target) {
   return group.unit==="★" ? "★"+target : format(target)+group.unit;
 }
 function trackMastery(scanDice = true) {
-  if (state.prestiges<3 || state.masteryRewards===ALL_MASTERY) return;
+  if (state.masteryRewards===ALL_MASTERY) return;
   if (scanDice) {
     for (let slot=0;slot<state.dice;slot++) {
-      if (state.dieMaterials[slot]===3) state.masteryNeon = Math.max(state.masteryNeon,state.dieStars[slot]);
+      if (state.dieMaterials[slot]===3) state.masteryGold = Math.max(state.masteryGold,state.dieStars[slot]);
       if (state.dieSpecials[slot]) state.masterySpecial = Math.max(state.masterySpecial,state.dieStars[slot]);
     }
   }
   state.masteryBurst = Math.max(state.masteryBurst,state.feverBurstRolls);
-  let chips = 0;
+  const previous = state.masteryRewards;
   MASTERY.forEach((goal,index)=>{
-    if (state[goal.track]<goal.target || (state.masteryRewards&(1<<index))) return;
-    state.masteryRewards |= 1<<index;
-    chips += goal.reward;
+    if (state[goal.track]>=goal.target) state.masteryRewards |= 1<<index;
   });
-  if (!chips) return;
-  state.vipChips = Math.min(Number.MAX_SAFE_INTEGER,state.vipChips+chips);
+  if (previous===state.masteryRewards) return;
   uiDirty = true;
   recordCollection();
   awardMilestones();
   save();
-  announce(state.masteryRewards===ALL_MASTERY ?
-    "オーロラブラック解放  ＋"+chips+" VIPチップ" : "ネオンマスタリー達成  ＋"+chips+" VIPチップ");
+  announce(state.masteryRewards===ALL_MASTERY ? "オーロラブラック解放" : "テーブルマスタリー達成");
 }
 function chargeFever(linked,combo,sameWave = false) {
-  const charge = (earlyPlay() ? 8 : 5)+3*Math.min(4,linked-1)+Math.min(5,combo-1)+(sameWave ? 3 : 0);
+  const charge = 10+3*Math.min(4,linked-1)+Math.min(5,combo-1)+(sameWave ? 3 : 0);
   gainFever(Math.round(charge*(1+.2*state.talents.fever)));
 }
 function gainFever(charge) {
-  if (state.feverLeft>0) return;
+  if (!state.talents.feverMode || state.feverLeft>0) return;
   state.feverCharge = Math.round((state.feverCharge+charge*(1+milestoneBonus().fever/100))*100)/100;
   if (state.feverCharge<100) return;
   state.feverCharge = 0;
@@ -385,11 +456,6 @@ function showIdle(from,to) {
   const payout = idleReward(from,to);
   if (payout) announce("放置中の獲得  ＋"+format(payout)+" コイン");
 }
-recordCollection();
-awardMilestones(false);
-showIdle(state.savedAt,Date.now());
-save();
-
 const upgradeViews = new Map();
 for (const item of upgrades) {
   const row = document.createElement("article");
@@ -400,9 +466,9 @@ for (const item of upgrades) {
     icon("coin")+'<span></span></span></button>';
   const button = row.querySelector("button");
   button.addEventListener("click",()=>buy(item));
-  upgradeViews.set(item.key,{detail:row.querySelector(".upgrade-detail"),button,
+  upgradeViews.set(item.key,{row,detail:row.querySelector(".upgrade-detail"),button,
     label:button.firstElementChild,price:button.lastElementChild,amount:button.lastElementChild.lastElementChild});
-  byId("upgrades").append(row);
+  byId(item.shop ? "shop-items" : "upgrades").append(row);
 }
 const specialViews = new Map();
 for (const [type,special] of Object.entries(SPECIAL_DICE)) {
@@ -414,26 +480,29 @@ for (const [type,special] of Object.entries(SPECIAL_DICE)) {
     '<button class="buy"><span class="buy-label"></span><span class="price">'+icon("coin")+'<span></span></span></button>';
   const button = row.querySelector("button");
   button.addEventListener("click",()=>buySpecial(type));
-  specialViews.set(type,{button,status:row.querySelector(".special-status")});
+  specialViews.set(type,{row,button,status:row.querySelector(".special-status")});
   byId("special-dice").append(row);
 }
-function conversionOffer(type) {
+function specialOffer(type) {
+  const special = SPECIAL_DICE[type];
   const count = state.dieSpecials.filter(value=>value===type).length;
-  const slot = state.dieSpecials.findLastIndex((value,index)=>value===null && state.dieStars[index]===1);
-  const convertedBasis = state.dieSpecials.reduce((total,value,index)=>
+  const limit = state.talents[special.skill];
+  const basis = state.dieSpecials.reduce((total,value,index)=>
     total+(value===type ? 2**(state.dieStars[index]-1) : 0),0);
   const rosterFactor = 1+.045*Math.max(0,dicePriceBasis(state)-4);
-  const conversionFactor = 1.65**Math.min(convertedBasis,8)*(1+.12*Math.max(0,convertedBasis-8));
-  return {count,slot,price:Math.ceil(SPECIAL_DICE[type].cost*conversionFactor*rosterFactor)};
+  const typeFactor = 1.65**Math.min(basis,8)*(1+.12*Math.max(0,basis-8));
+  return {count,limit,price:Math.ceil(special.cost*typeFactor*rosterFactor)};
 }
 function buySpecial(type) {
   if (!Object.hasOwn(SPECIAL_DICE,type)) return;
   const special = SPECIAL_DICE[type];
-  const {slot,count,price} = conversionOffer(type);
-  if (state.dice<3 || slot<0 || state.coins<price || count>=SPECIAL_LIMIT) return;
+  const {count,limit,price} = specialOffer(type);
+  if (!state.tree || count>=limit || state.dice>=caps.dice || state.coins<price) return;
   unlockAudio();
   state.coins -= price;
+  const slot = state.dice++;
   state.dieSpecials[slot] = type;
+  spawnDie();
   recordCollection();
   awardMilestones();
   markedDie = dice[slot];
@@ -441,23 +510,27 @@ function buySpecial(type) {
   sound("buy");
   save();
   renderUI();
-  announce("ダイス #"+(slot+1)+" が"+special.name+"になりました");
+  announce(special.name+"をテーブルに追加しました");
 }
 function renderSpecials() {
+  let visible = false;
   for (const [type,view] of specialViews) {
     const special = SPECIAL_DICE[type];
-    const {slot,count,price} = conversionOffer(type);
-    const capped = count>=SPECIAL_LIMIT;
-    const label = capped ? "所持上限" : "変換";
-    const target = state.dice<3 ? "ダイス3個で解放" : slot<0 ? "★1の通常ダイスが必要" : "対象 #"+(slot+1);
-    view.status.textContent = "所持 "+count+" / "+SPECIAL_LIMIT+" 個"+(capped ? "" : " · "+target);
-    view.button.disabled = capped || state.dice<3 || slot<0 || state.coins<price;
+    const {count,limit,price} = specialOffer(type);
+    view.row.hidden = !state.tree || !limit;
+    if (view.row.hidden) continue;
+    visible = true;
+    const capped = count>=limit || state.dice>=caps.dice;
+    const label = count>=limit ? "所持上限" : state.dice>=caps.dice ? "テーブル満員" : "購入";
+    view.status.textContent = "所持 "+count+" / "+limit+" 個";
+    view.button.disabled = capped || state.coins<price;
     view.button.firstElementChild.textContent = label;
     view.button.lastElementChild.hidden = capped;
     view.button.lastElementChild.lastElementChild.textContent = format(price);
     view.button.setAttribute("aria-label",special.name+" "+label+
       (capped ? "" : " "+format(price)+" コイン"));
   }
+  byId("special-shop").hidden = !visible;
 }
 const mergeRows = new Map();
 const mergeJump = byId("merge-jump");
@@ -499,8 +572,10 @@ function mergePrice(die) {
     MERGE_MATERIAL_FACTORS[state.dieMaterials[slot]]*specialFactor*rosterFactor);
 }
 function renderMerges() {
+  const unlocked = state.tree && !!state.talents.merge;
+  byId("merge-section").hidden = !unlocked;
   const groups = new Map();
-  for (const die of dice) {
+  for (const die of unlocked ? dice : []) {
     if (state.dieStars[die.slot]>=MAX_STARS) continue;
     const key = mergeKey(die);
     if (!groups.has(key)) groups.set(key,[]);
@@ -552,12 +627,12 @@ function renderMerges() {
   }
 }
 function mergeDice(key) {
+  if (!state.tree || !state.talents.merge) return;
   const pair = dice.filter(die=>mergeKey(die)===key).slice(0,2);
   if (pair.length!==2 || state.dieStars[pair[0].slot]>=MAX_STARS) return;
   const [first,second] = pair;
   const price = mergePrice(first);
   if (state.coins<price) return;
-  if (held && pair.includes(held.die)) held = null;
   if (pointer?.target && pair.includes(pointer.target)) pointer = null;
   unlockAudio();
   const inputs = pair.map(die=>({die:{...die},rank:state.dieMaterials[die.slot],
@@ -612,20 +687,22 @@ function mergeDice(key) {
 materials.forEach(material=>{
   const badge = document.createElement("span");
   badge.className = "material";
-  const label = material.name === "ネオンレーザー" ? "ネオン" : material.name;
   badge.style.setProperty("--die-color",material.low);
-  badge.innerHTML = '<span class="material-swatch" aria-hidden="true"></span><span>'+label+'</span><strong>0</strong>';
+  badge.innerHTML = '<span class="material-swatch" aria-hidden="true"></span><span>'+material.name+'</span><strong>0</strong>';
   badge.title = material.name+" ×"+material.multiplier;
   byId("materials").append(badge);
 });
-const recordLabels = ["総獲得コイン","ロール数","共鳴クリティカル","最大共鳴コンボ","フィーバー発動",
-  "1回のフィーバーでの最高獲得コイン","合成回数","到達した星","1回のフィーバーでの最多バースト",
-  "プレイ時間","アーム作動間隔"];
-for (const label of recordLabels) {
+const recordRows = [
+  ["総獲得コイン"],["ロール数"],["共鳴クリティカル","match"],["最大共鳴コンボ","match"],
+  ["フィーバー発動","feverMode"],["1回のフィーバーでの最高獲得コイン","feverMode"],
+  ["合成回数","merge"],["到達した星","merge"],["1回のフィーバーでの最多バースト","feverMode"],
+  ["プレイ時間"],["アーム作動間隔","arms"],
+].map(([label,skill])=>{
   const line = document.createElement("div");
   line.innerHTML = "<dt>"+label+"</dt><dd></dd>";
   byId("records").append(line);
-}
+  return {line,value:line.lastElementChild,skill};
+});
 const collectionViews = new Map();
 for (const button of document.querySelectorAll("[data-journal-jump]")) {
   button.addEventListener("click",()=>{
@@ -692,8 +769,6 @@ function renderCollection() {
     });
   }
 }
-const vipDialog = byId("vip-dialog");
-const vipButton = byId("vip-rebirth");
 const skinViews = skins.map((skin,index)=>{
   const button = document.createElement("button");
   button.className = "skin-choice";
@@ -704,9 +779,9 @@ const skinViews = skins.map((skin,index)=>{
     state.skin = index;
     applySkin();
     save();
-    renderVIP();
+    renderSkins();
   });
-  byId("vip-skins").append(button);
+  byId("table-skins").append(button);
   return button;
 });
 const masteryViews = MASTERY.map(goal=>{
@@ -727,45 +802,32 @@ for (const branch of new Set(talents.map(talent=>talent.branch))) {
     row.className = "upgrade";
     row.innerHTML = '<span class="upgrade-icon">'+icon(talent.icon)+'</span><div><h5 class="upgrade-name">'+
       talent.title+'</h5><p class="upgrade-detail"></p></div><button class="buy"><span class="buy-label"></span><span class="price">'+
-      icon("gem")+'<span></span></span></button>';
+      icon("coin")+'<span></span></span></button>';
     const button = row.querySelector("button");
     const price = button.lastElementChild;
     button.addEventListener("click",()=>buyTalent(talent));
     talentViews.set(talent.id,{detail:row.querySelector(".upgrade-detail"),button,label:button.firstElementChild,price});
     group.lastElementChild.append(row);
   }
-  byId("vip-talents").append(group);
+  byId("skill-nodes").append(group);
 }
-function pendingChips() {
-  return Math.floor(Math.sqrt(state.runEarned/VIP_TARGET));
-}
-function talentLocked(talent) {
-  return talent.requires && !state.talents[talent.requires];
+function missingPrerequisites(talent, rank) {
+  const required = typeof talent.requires==="function" ? talent.requires(rank) : talent.requires;
+  return Object.entries(required ?? {}).filter(([id,level])=>state.talents[id]<level);
 }
 function buyTalent(talent) {
   const rank = state.talents[talent.id];
   const cost = talent.costs[rank];
-  if (cost===undefined || talentLocked(talent) || state.vipChips<cost) return;
+  if (!state.tree || cost===undefined || missingPrerequisites(talent,rank+1).length || state.coins<cost) return;
   unlockAudio();
-  state.vipChips -= cost;
+  state.coins -= cost;
   state.talents[talent.id]++;
+  awardMilestones();
   sound("buy");
   save();
   renderUI();
 }
-function renderVIP() {
-  const reward = pendingChips();
-  byId("vip-chips").textContent = format(state.vipChips);
-  byId("vip-count").textContent = format(state.prestiges);
-  byId("vip-reward").textContent = "＋"+format(reward)+" チップ";
-  const nextTarget = VIP_TARGET*(reward+1)**2;
-  byId("vip-condition").textContent = reward ?
-    "転生可能 · 今回の獲得 "+format(state.runEarned)+" コイン · "+format(reward+1)+" 枚は "+format(nextTarget)+" コインから" :
-    "今回の獲得 "+format(state.runEarned)+" / "+format(VIP_TARGET)+" コインで転生可能";
-  byId("vip-progress").max = nextTarget;
-  byId("vip-progress").value = state.runEarned;
-  vipButton.disabled = reward===0;
-  if (vipDialog.open) byId("vip-confirm-text").textContent = "今回の転生で VIPチップを "+format(reward)+" 枚獲得します。";
+function renderSkins() {
   skinViews.forEach((button,index)=>{
     const skin = skins[index];
     const locked = !skinAvailable(skin);
@@ -773,71 +835,46 @@ function renderVIP() {
     button.disabled = locked;
     button.setAttribute("aria-pressed",String(selected));
     button.lastElementChild.textContent = locked ?
-      (skin.mastery ? "マスタリー全達成で解放" : "転生 "+skin.unlock+" 回で解放") : selected ? "使用中" : "使用する";
+      (skin.mastery ? "マスタリー全達成" : "累計 "+format(skin.unlock)+" コイン") : selected ? "使用中" : "使用する";
   });
-  byId("mastery-section").hidden = state.prestiges<3;
+  byId("mastery-section").hidden = !skinAvailable(skins[2]) && !state.masteryRewards;
   MASTERY.forEach((goal,index)=>{
     const view = masteryViews[index], completed = !!(state.masteryRewards&(1<<index));
-    const current = Math.min(goal.target,state[goal.track]);
+    const current = completed ? goal.target : Math.min(goal.target,state[goal.track]);
     view.row.classList.toggle("complete",completed);
     view.progress.value = current;
-    view.value.textContent = completed ? "達成済み" : current+" / "+goal.target+" · ＋"+goal.reward+"チップ";
+    view.value.textContent = completed ? "達成済み" : current+" / "+goal.target;
   });
+}
+function renderSkills() {
+  byId("skills-locked").hidden = state.tree;
+  byId("skill-nodes").hidden = !state.tree;
+  if (!state.tree) return;
   for (const talent of talents) {
     const view = talentViews.get(talent.id);
     const rank = state.talents[talent.id];
     const cost = talent.costs[rank];
-    const locked = talentLocked(talent);
     const maxed = cost===undefined;
-    const prerequisite = locked ? talents.find(item=>item.id===talent.requires).title+" Lv.1 が必要" : "";
-    const effect = talent.detail(rank || 1);
-    view.detail.textContent = "Lv. "+rank+" / "+talent.costs.length+" · "+(prerequisite || (rank ? "" : "解放で ")+effect);
-    view.button.disabled = maxed || !!locked || state.vipChips<cost;
-    view.label.textContent = maxed ? "最大" : locked ? "未解放" : rank ? "強化" : "解放";
+    const missing = maxed ? [] : missingPrerequisites(talent,rank+1);
+    const requirements = missing.map(([id,level])=>talentById.get(id).title+" Lv."+level).join("、");
+    const effect = maxed ? talent.detail(rank) : rank ?
+      talent.detail(rank)+" · 次: "+talent.detail(rank+1) : talent.detail(1);
+    view.detail.textContent = "Lv. "+rank+" / "+talent.costs.length+" · "+effect+
+      (requirements ? " · 必要: "+requirements : "");
+    view.button.disabled = maxed || missing.length>0 || state.coins<cost;
+    view.label.textContent = maxed ? "最大" : missing.length ? "条件未達" : rank ? "強化" : "解放";
     view.price.hidden = maxed;
-    view.price.lastElementChild.textContent = cost ?? "";
-    view.button.title = maxed || locked ? "" : talent.detail(rank+1);
-    view.button.setAttribute("aria-label",talent.title+" "+view.label.textContent+(view.price.hidden ? "" : " "+cost+" VIPチップ"));
+    view.price.lastElementChild.textContent = maxed ? "" : short(cost);
+    view.button.setAttribute("aria-label",talent.title+" "+view.label.textContent+(maxed ? "" : " "+format(cost)+" コイン"));
   }
 }
-vipButton.addEventListener("click",()=>{
-  if (!pendingChips()) return;
-  unlockAudio();
-  vipDialog.returnValue = "cancel";
-  vipDialog.showModal();
-  renderVIP();
-});
-vipDialog.addEventListener("close",()=>{
-  if (vipDialog.returnValue!=="rebirth") return;
-  const reward = pendingChips();
-  if (!reward) return;
-  const old = state;
-  const remaining = fresh();
-  for (const key of ["rolls","resonances","best","earned","seconds","muted","skin","talents",
-    "masteryNeon","masterySpecial","masteryBurst","masteryRewards","collection","achievements","highestStar",
-    "merges","feverStarts","bestFeverCoins","bestFeverBursts"]) remaining[key] = old[key];
-  remaining.vipChips = Math.min(Number.MAX_SAFE_INTEGER,old.vipChips+reward);
-  remaining.prestiges = Math.min(Number.MAX_SAFE_INTEGER,old.prestiges+1);
-  const newSkin = skins.findIndex(skin=>skin.unlock>old.prestiges && skin.unlock<=remaining.prestiges);
-  if (newSkin>=0) remaining.skin = newSkin;
-  remaining.coins = remaining.talents.bankroll*20;
-  remaining.dice = 1+remaining.talents.dice;
-  remaining.dieMaterials = Array(remaining.dice).fill(remaining.talents.materialStart);
-  state = remaining;
-  resetTable();
-  trackMastery();
-  recordCollection();
-  awardMilestones();
-  applySkin();
-  save();
-  renderUI();
-  sound("fever");
-  announce("VIP転生  ＋"+format(reward)+" チップ");
-});
 const feverStage = document.querySelector(".stage");
-const feverView = {label:byId("fever-label"),effect:byId("fever-effect"),progress:byId("fever-progress"),
+const feverView = {meter:byId("fever-meter"),label:byId("fever-label"),effect:byId("fever-effect"),progress:byId("fever-progress"),
   fill:byId("fever-fill"),value:byId("fever-value")};
 function renderFever() {
+  const unlocked = !!state.talents.feverMode;
+  feverView.meter.hidden = !unlocked;
+  feverStage.classList.toggle("fever-unlocked",unlocked);
   const active = state.feverLeft>0;
   const fraction = active ? state.feverLeft/FEVER_DURATION : state.feverCharge/100;
   const value = active ? Math.ceil(state.feverLeft)+" 秒" : Math.floor(state.feverCharge)+"%";
@@ -857,21 +894,12 @@ function renderFever() {
 const goalView = {box:byId("shop-goal"),label:byId("goal-label"),value:byId("goal-value"),
   reason:byId("goal-reason"),progress:byId("goal-progress")};
 function renderGoal() {
-  goalView.box.hidden = state.prestiges>0 || state.arms>0 || state.rolls>=35 || state.earned>=VIP_TARGET;
+  goalView.box.hidden = state.tree || state.rolls>=25 || state.dice>=2;
   if (goalView.box.hidden) return;
-  let key = "arms", reason = "アームが一定間隔でダイスを1個振ります。";
-  if (state.dice<2) {
-    key = "dice";
-    reason = "ダイスが2個になると、同じ出目で共鳴できます。";
-  } else if (!state.wave) {
-    key = "wave";
-    reason = "スラムは今すぐ使えます。衝撃波を解放すると投擲でも周囲を巻き込みます。";
-  }
-  const item = upgrades.find(upgrade=>upgrade.key===key);
-  const cost = Math.ceil(item.cost(state));
-  goalView.label.textContent = "次の目標 · "+item.title;
+  const cost = upgradeOffer(upgrades[0]).price;
+  goalView.label.textContent = "次の目標 · 2個目のダイス";
   goalView.value.textContent = state.coins>=cost ? "購入可能" : format(state.coins)+" / "+format(cost);
-  goalView.reason.textContent = reason;
+  goalView.reason.textContent = "ダイスが増えると続けて投げられます。";
   goalView.progress.max = cost;
   goalView.progress.value = state.coins;
 }
@@ -880,8 +908,6 @@ function materialOffer() {
   const to = from+1;
   const index = state.dieMaterials.indexOf(from);
   const advanced = state.dieMaterials.filter(rank=>rank>=to).length;
-  const requiredRebirths = materialRebirths(to);
-  const needsLicense = to>1 && !state.talents.materialPermit;
   const advancedBasis = state.dieMaterials.reduce((total,rank,slot)=>
     total+(rank>=to ? 2**(state.dieStars[slot]-1) : 0),0);
   const rosterFactor = 1+.055*Math.max(0,dicePriceBasis(state)-4);
@@ -890,11 +916,12 @@ function materialOffer() {
   const progressFactor = (1+.12*advancedBasis)*earlyGrowth*lateGrowth;
   const starFactor = 1.8**(state.dieStars[index]-1);
   return {from,to,index,capped:from===caps.material,
-    advanced,requiredRebirths,needsLicense,locked:needsLicense || state.prestiges<requiredRebirths,
+    advanced,locked:to>state.talents.material,
     price:Math.ceil((MATERIAL_PRICES[from] ?? Infinity)*rosterFactor*progressFactor*starFactor)};
 }
-function materialRebirths(tier) {
-  return Math.max(0,tier-2);
+function upgradeAvailable(item) {
+  if (item.key==="tree") return !state.tree;
+  return !item.skill || (state.tree && state.talents[item.skill]>0);
 }
 function upgradeOffer(item) {
   if (item.key==="material") return materialOffer();
@@ -915,16 +942,9 @@ function renderMaterials() {
     rule.textContent = "全ダイスが最高材質です。";
     return;
   }
-  const nextTier = offer.locked ? offer.to : offer.to+1;
-  const rebirths = materialRebirths(nextTier);
-  if (nextTier>caps.material) {
-    rule.textContent = "1回の購入でダイス1個がネオンレーザーになります。";
-    return;
-  }
-  const requirements = ["全ダイスが"+materials[nextTier-1].name+"以上"];
-  if (nextTier>1) requirements.push("材質ライセンスの解放");
-  if (rebirths) requirements.push("VIP転生が通算"+rebirths+"回以上");
-  rule.textContent = materials[nextTier].name+"の解放には"+requirements.join("、")+"が必要です。";
+  rule.textContent = offer.locked ?
+    materials[offer.to].name+"に進化するには、スキル「材質加工」Lv."+offer.to+"が必要です。" :
+    "1回の購入で1個を進化します。最も下位の材質から順番に加工します。";
 }
 function renderUI() {
   renderFever();
@@ -933,21 +953,26 @@ function renderUI() {
     renderSpecials();
   }
   renderMerges();
-  if (!byId("vip").hidden || vipDialog.open) renderVIP();
-  if (!byId("collection").hidden) renderCollection();
+  if (!byId("skills").hidden) renderSkills();
+  if (!byId("collection").hidden) {
+    renderCollection();
+    renderSkins();
+  }
   byId("coins").textContent = short(state.coins);
   byId("coins").title = format(state.coins);
   byId("dice-count").firstChild.nodeValue = state.dice+" ";
+  byId("arm-stat").hidden = !state.talents.arms;
   byId("arm-count").textContent = state.arms;
-  renderThrowControls();
-  renderMaterials();
+  byId("material-section").hidden = !state.talents.material;
+  if (state.talents.material && !byId("enhance").hidden) renderMaterials();
   for (const item of upgrades) {
     const view = upgradeViews.get(item.key);
+    view.row.hidden = !upgradeAvailable(item);
+    if (view.row.hidden) continue;
     const offer = upgradeOffer(item);
     const {capped,locked,price} = offer;
     view.detail.textContent = item.key!=="material" ? item.detail(state) : capped ? "全ダイスが最高材質" :
-      offer.needsLicense ? materials[offer.to].name+"には材質ライセンスが必要" :
-      locked ? "VIP転生 "+offer.requiredRebirths+" 回で"+materials[offer.to].name+"を解放" :
+      locked ? "材質加工 Lv."+offer.to+"で"+materials[offer.to].name+"を解放" :
       "ダイス #"+(offer.index+1)+" ★"+state.dieStars[offer.index]+" を"+materials[offer.to].name+" ×"+materials[offer.to].multiplier+
       "へ · "+offer.advanced+"/"+state.dice+"個済み";
     view.button.disabled = capped || locked || state.coins < price;
@@ -963,12 +988,16 @@ function renderUI() {
     const values = [format(state.earned),format(state.rolls),format(state.resonances),format(state.best),
       format(state.feverStarts),format(state.bestFeverCoins),format(state.merges),"★"+state.highestStar,format(state.bestFeverBursts),
       mins+" 分 "+secs+" 秒",state.arms ? armInterval().toFixed(2)+" 秒" : "未雇用"];
-    byId("records").querySelectorAll("dd").forEach((node,index)=>{node.textContent=values[index];});
+    recordRows.forEach(({line,value,skill},index)=>{
+      line.hidden = !!skill && !state.talents[skill];
+      value.textContent = values[index];
+    });
   }
   uiDirty = false;
 }
 function buy(item) {
   const key = item.key;
+  if (!upgradeAvailable(item)) return;
   const offer = upgradeOffer(item);
   if (offer.capped || offer.locked || state.coins<offer.price || !Number.isFinite(offer.price)) return;
   unlockAudio();
@@ -979,15 +1008,12 @@ function buy(item) {
     markedUntil = time+1.3;
     announce("ダイス #"+(offer.index+1)+" が"+materials[offer.to].name+"に進化");
     trackMastery();
+  } else if (key === "tree") {
+    state.tree = true;
   } else {
     state[key]++;
   }
-  if (key === "dice") {
-    spawnDie();
-    if (state.dice===2 && state.prestiges===0 && state.rolls<=12) {
-      showThrowStatus("ホールドとスラムで大共鳴を狙えます");
-    }
-  }
+  if (key === "dice") spawnDie();
   if (key === "dice" || key === "material") {
     recordCollection();
     awardMilestones();
@@ -997,7 +1023,8 @@ function buy(item) {
   if (key === "arms" && state.arms === 1) announce("ロボットアームが稼働を開始");
   sound("buy");
   save();
-  renderUI();
+  if (key === "tree") selectTab(byId("skills-tab"),true);
+  else renderUI();
 }
 
 const tabButtons = [...document.querySelectorAll("[data-tab]")];
@@ -1079,13 +1106,9 @@ function sound(type,combo = 1) {
   if (type === "hit") tone(random(210,330),92,.046,.037,"triangle");
   if (type === "land") tone(random(170,230),72,.058,.045,"triangle");
   if (type === "wave") tone(165,54,.15,.049,"sine");
-  if (type === "impact" || type === "slam") {
-    tone(type==="slam" ? 162 : 238,57,.145,.055,"triangle");
+  if (type === "impact") {
+    tone(238,57,.145,.055,"triangle");
     tone(320,113,.076,.031,"sine",.012);
-  }
-  if (type === "grand") {
-    tone(440,554,.16,.038,"triangle");
-    tone(830,1047,.26,.040,"sine",.071);
   }
   if (type === "blast") tone(224,60,.16,.045,"triangle");
   if (type === "achievement") {
@@ -1244,8 +1267,7 @@ function resetTable() {
   fusions = [];
   burstUntil = 0;
   burstPayout = 0;
-  held = null; holdMode = false; slamReady = time; impactTime = -Infinity; hitStop = 0; pointer = null;
-  throwStatusUntil = time;
+  impactTime = -Infinity; hitStop = 0; pointer = null;
   state.dieMaterials.length = state.dice;
   state.dieSpecials.length = state.dice;
   state.dieStars.length = state.dice;
@@ -1255,8 +1277,6 @@ function resetTable() {
   for (let i=0;i<state.arms;i++) spawnArm();
 }
 function isFusing(die) {return fusions.some(fusion=>fusion.die===die && !fusion.impacted);}
-function isHeld(die) {return held?.die===die;}
-function earlyPlay() {return state.prestiges===0 && state.rolls<=45;}
 function confine(die,rebound = true) {
   const padding = unit*17*starStats(die).size;
   const rx = Math.min(padding,board.w*.5), ry = Math.min(padding,board.h*.5);
@@ -1274,8 +1294,7 @@ function confine(die,rebound = true) {
   die.y = y;
 }
 function launch(die, x, y, strength, manual, gesture = null) {
-  if (isHeld(die) || isFusing(die) || (!manual && !gesture?.reroll && pointer?.target===die) ||
-      (!gesture?.reroll && (die.rolling || time-die.launched < .19))) return false;
+  if (isFusing(die) || (!manual && pointer?.target===die) || die.rolling || time-die.launched<.19) return false;
   const spread = gesture?.angle===undefined ? .34 : .10;
   const angle = (gesture?.angle ?? Math.atan2(die.y-y,die.x-x))+random(-spread,spread);
   const impulse = random(63,122)*unit*strength;
@@ -1291,10 +1310,8 @@ function launch(die, x, y, strength, manual, gesture = null) {
   die.manualBatch = null;
   die.fromBlast = false;
   die.echo = null;
-  die.manualThrow = manual;
   die.hardThrow = !!gesture?.hard;
   die.aimedThrow = gesture?.angle!==undefined;
-  die.slamAnchor = null;
   die.trail = [];
   die.launched = time;
   die.rolling = true;
@@ -1328,35 +1345,6 @@ function addWave(source,kind = "manual") {
 function waveRadius(wave) {
   const t = clamp(wave.t/wave.life,0,1);
   return Math.min(board.w,board.h)*wave.range*(1-(1-t)**2);
-}
-function tableSlam(point) {
-  if (time<slamReady || point.x<board.x || point.x>board.x+board.w || point.y<board.y || point.y>board.y+board.h) return false;
-  const radius = SLAM_RANGE*Math.min(board.w,board.h);
-  const targets = dice.filter(die=>!isHeld(die) && !isFusing(die) &&
-    (die.rolling || time-(die.landedAt ?? -Infinity)<.65 || held))
-    .map(die=>({die,distance:Math.hypot(die.x-point.x,die.y-point.y)}))
-    .filter(item=>item.distance<=radius)
-    .sort((a,b)=>a.distance-b.distance)
-    .slice(0,3);
-  if (!targets.length) return false;
-  for (const {die} of targets) {
-    const assist = held && Math.hypot(die.x-held.die.x,die.y-held.die.y)<=radius;
-    launch(die,point.x,point.y,.78,false,{reroll:true});
-    if (assist) {
-      die.slamAnchor = held;
-      if (held.misses || Math.random()<.60) die.nextFace = held.die.face;
-    }
-  }
-  slamReady = time+SLAM_COOLDOWN;
-  waves.push({x:point.x,y:point.y,range:SLAM_RANGE,t:0,life:.34,kind:"slam",remaining:0,hit:new Set()});
-  if (waves.length>24) waves.shift();
-  spark(point.x,point.y,["#a5fff1","#ffe4b1"],14);
-  if (!reducedMotion.matches && time-impactTime>=.36) {
-    impactTime = time;
-    hitStop = .019;
-  }
-  sound("slam");
-  return true;
 }
 function spark(x,y,palette,count) {
   if (reducedMotion.matches) count = Math.ceil(count*.35);
@@ -1393,17 +1381,13 @@ function settle(die) {
   const rewards = milestoneBonus();
   const stars = state.dieStars[die.slot];
   const base = rollValue(die.face,state.dieMaterials[die.slot],stars);
-  const candidates = recent[die.face];
+  const candidates = state.talents.match ? recent[die.face] : [];
   while (candidates.length && time-candidates[0].t > RESONANCE_WINDOW) candidates.shift();
   let bonus = 0;
   const linked = new Set(candidates.map(other=>other.die));
   linked.delete(die);
-  const heldMatch = held && held.die!==die && held.die.face===die.face;
-  const grand = !!heldMatch && die.slamAnchor===held;
-  if (heldMatch) linked.add(held.die);
-  if (die.slamAnchor && die.slamAnchor===held && !grand) held.misses++;
   const echo = die.echo;
-  const echoMatch = echo?.face===die.face && time<=echo.until && dice.includes(echo.source);
+  const echoMatch = state.talents.match && echo?.face===die.face && time<=echo.until && dice.includes(echo.source);
   if (echoMatch) linked.add(echo.source);
   if (linked.size) {
     streak = time-lastCrit <= RESONANCE_WINDOW ? streak+1 : 1;
@@ -1422,16 +1406,7 @@ function settle(die) {
   } else {
     spark(die.x,die.y,["#cbb074","#fff1ad"],4);
   }
-  die.landedAt = time;
-  if (grand) {
-    held = null;
-    gainFever(earlyPlay() ? 34 : 24);
-    showThrowStatus("大共鳴 ×3！ スラムで固定した目が揃った");
-    spark(die.x,die.y,["#fff0a2","#a5ffe7","#fbb179"],24);
-    sound("grand");
-  }
-  if (die.manualThrow && earlyPlay()) gainFever(5);
-  candidates.push({die,t:time,batch:die.manualBatch});
+  if (state.talents.match) candidates.push({die,t:time,batch:die.manualBatch});
   const special = state.dieSpecials[die.slot];
   const star = starStats(die);
   const blast = special==="blast" ? specialStats("blast",stars) : null;
@@ -1456,17 +1431,16 @@ function settle(die) {
   if (boost.bonus) spark(die.x,die.y,["#90eed0"],4);
   if (boost.heat) gainFever(boost.heat);
   const multiplier = feverMultiplier();
-  const highCombo = grand || (linked.size>0 && streak>=4);
+  const highCombo = linked.size>0 && streak>=4;
   const highStar = stars>=3;
   const specialSynergy = blastFired || (heat && die.face>=heat.face) || boost.bonus>0;
   const specialActive = specialSynergy || special==="aura";
   const burst = multiplier===2 && ((highStar && (highCombo || specialActive)) || (highCombo && specialActive)) ?
     (highStar && highCombo && specialActive ? 6 : 4) : 0;
-  const precision = grand ? 3 : heldMatch ? 1.45 : 1;
   const chain = linked.size ? 1+.15*clamp(streak-2,0,4)+
     (specialSynergy ? .25 : 0)+(die.aimedThrow ? .15 : 0) : 1;
   const heatFactor = multiplier===2 ? 1+(heat?.feverBonus ?? 0) : 1;
-  const amount = Math.round((base+bonus)*precision*chain*(1+boost.bonus/100)*
+  const amount = Math.round((base+bonus)*chain*(1+boost.bonus/100)*
     heatFactor*(burst || multiplier)*(1+rewards.income/100));
   credit(amount);
   if (multiplier===2) {
@@ -1485,11 +1459,11 @@ function settle(die) {
   sound("land");
   sound("coin");
   const life = bonus || burst ? 1.1 : .85;
-  placePopup({x:die.x,y:die.y-14*unit,life,total:life,amount,crit:bonus ? streak : 0,fever:multiplier===2,burst,grand});
+  placePopup({x:die.x,y:die.y-14*unit,life,total:life,amount,crit:bonus ? streak : 0,fever:multiplier===2,burst});
   awardMilestones();
 }
 function tickDie(die,dt) {
-  if (isFusing(die) || isHeld(die)) return;
+  if (isFusing(die)) return;
   die.x += die.vx*dt;
   die.y += die.vy*dt;
   const friction = Math.exp(-(die.rolling ? 1.15 : 8)*dt);
@@ -1543,14 +1517,17 @@ function separateDice() {
       const dist = Math.sqrt(distSq);
       const nx = dist > .001 ? dx/dist : 1, ny = dist > .001 ? dy/dist : 0;
       const gap = (min-dist)*.31;
-      const aFixed = isHeld(a), bFixed = isHeld(b);
-      if (!aFixed) {a.x -= nx*gap*(bFixed ? 2 : 1); a.y -= ny*gap*(bFixed ? 2 : 1);}
-      if (!bFixed) {b.x += nx*gap*(aFixed ? 2 : 1); b.y += ny*gap*(aFixed ? 2 : 1);}
+      a.x -= nx*gap;
+      a.y -= ny*gap;
+      b.x += nx*gap;
+      b.y += ny*gap;
       const approach = (a.vx-b.vx)*nx+(a.vy-b.vy)*ny;
       if (approach > 0) {
         const transfer = approach*.61;
-        if (!aFixed) {a.vx -= transfer*nx; a.vy -= transfer*ny;}
-        if (!bFixed) {b.vx += transfer*nx; b.vy += transfer*ny;}
+        a.vx -= transfer*nx;
+        a.vy -= transfer*ny;
+        b.vx += transfer*nx;
+        b.vy += transfer*ny;
         if (approach > 34*unit) {sound("hit");hardImpact(a);hardImpact(b);}
       }
       confine(a,false); confine(b,false);
@@ -1572,7 +1549,7 @@ function tickArm(arm,dt) {
     if (arm.sweep.elapsed>.66) arm.sweep = null;
   }
   if (time >= arm.next) {
-    const available = dice.filter(die=>!isFusing(die) && !isHeld(die));
+    const available = dice.filter(die=>!isFusing(die));
     const settled = available.filter(die=>!die.rolling);
     const targets = settled.length ? settled : available;
     const target = targets[Math.floor(Math.random()*targets.length)];
@@ -1587,10 +1564,10 @@ function tickArm(arm,dt) {
     const sweep = arm.sweep;
     sweep.fired = true;
     let target = sweep.target;
-    if (target.rolling || isFusing(target) || isHeld(target)) {
+    if (target.rolling || isFusing(target)) {
       let nearest = Infinity;
       for (const die of dice) {
-        if (die.rolling || isFusing(die) || isHeld(die)) continue;
+        if (die.rolling || isFusing(die)) continue;
         const distance = Math.hypot(die.x-sweep.x,die.y-sweep.y);
         if (distance>=nearest) continue;
         target = die;
@@ -1619,7 +1596,7 @@ function cascadeArm(source) {
   for (let depth=0;depth<rank && remaining>0 && sources.length;depth++) {
     const next = [];
     for (const from of sources) {
-      const nearby = dice.filter(die=>!die.rolling && !isFusing(die) && !isHeld(die))
+      const nearby = dice.filter(die=>!die.rolling && !isFusing(die))
         .map(die=>({die,distance:Math.hypot(die.x-from.x,die.y-from.y)}))
         .filter(item=>item.distance<=reach)
         .sort((a,b)=>a.distance-b.distance);
@@ -1646,7 +1623,6 @@ function tickFusion() {
 function step(dt) {
   time += dt;
   state.seconds += dt;
-  if (held && time>=held.until) held = null;
   tickFusion();
   tickFever(dt);
   for (const arm of arms) tickArm(arm,dt);
@@ -1661,7 +1637,7 @@ function step(dt) {
           die.manualBatch = wave.batch;
           die.fromBlast = wave.kind==="blast";
           die.echo = wave.echo;
-          if (wave.echo?.source && Math.random()<wave.echo.chance) die.nextFace = wave.echo.face;
+          if (state.talents.match && wave.echo?.source && Math.random()<wave.echo.chance) die.nextFace = wave.echo.face;
           wave.remaining--;
         }
       }
@@ -1994,7 +1970,7 @@ function drawWave(wave) {
   const radius = waveRadius(wave);
   if (radius<=0) return;
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius,0,Math.PI*2);
-  const color = wave.kind==="blast" ? "255,153,91" : wave.kind==="arm" || wave.kind==="slam" ? "145,247,213" :
+  const color = wave.kind==="blast" ? "255,153,91" : wave.kind==="arm" ? "145,247,213" :
     wave.kind==="star" ? "200,173,255" : "255,213,137";
   ctx.strokeStyle="rgba("+color+","+(1-t)*.66+")";
   ctx.lineWidth=Math.min(radius*.18,(3.5-2*t)*unit);ctx.stroke();
@@ -2059,14 +2035,13 @@ function placePopup(popup) {
   nearest.crit = Math.max(nearest.crit,popup.crit);
   nearest.fever ||= popup.fever;
   nearest.burst = Math.max(nearest.burst ?? 0,popup.burst ?? 0);
-  nearest.grand ||= popup.grand;
   nearest.life = Math.max(nearest.life,.4);
 }
 function drawPopup(popup) {
   const age=popup.total-popup.life;
   const cell = popupCell(popup.slot);
   const maxWidth = Math.max(1,popupGrid.w-7);
-  const annotated = popup.crit || popup.burst || popup.grand;
+  const annotated = popup.crit || popup.burst;
   const amountSize = Math.min(popupGrid.h*.36,Math.max(13,(annotated ? 17 : 15)*unit));
   const comboSize = Math.min(popupGrid.h*.26,Math.max(10,11*unit));
   const x=cell.x, y=cell.y-popupGrid.h*(age/popup.total*.14+(annotated ? .11 : 0));
@@ -2081,8 +2056,7 @@ function drawPopup(popup) {
   ctx.fillStyle=popup.burst ? "#ffe48b" : popup.fever ? "#fff0ad" : popup.crit ? "#c7ffcc" : "#ffe4a1";
   ctx.fillText(label,x,y,maxWidth);
   if (annotated) {
-    const combo=popup.grand ? "大共鳴 ×3"+(popup.burst ? " · バースト ×"+popup.burst : "") :
-      popup.burst ? "バースト ×"+popup.burst+(popup.crit ? " · 共鳴 ×"+popup.crit : "") :
+    const combo=popup.burst ? "バースト ×"+popup.burst+(popup.crit ? " · 共鳴 ×"+popup.crit : "") :
       "共鳴クリティカル"+(popup.crit>1 ? " ×"+popup.crit : "");
     const comboY = y+(amountSize+comboSize)*.64;
     ctx.font="750 "+comboSize+"px 'Segoe UI',sans-serif";
@@ -2190,16 +2164,6 @@ function draw() {
     ctx.fillStyle=feverGlow;
     ctx.fillRect(board.x,board.y,board.w,board.h);
   }
-  if (held) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(held.die.x,held.die.y,SLAM_RANGE*Math.min(board.w,board.h),0,Math.PI*2);
-    ctx.strokeStyle = "#b9fff175";
-    ctx.lineWidth = Math.max(1,unit);
-    ctx.setLineDash([4*unit,5*unit]);
-    ctx.stroke();
-    ctx.restore();
-  }
   for (const aura of dice) {
     if (aura.rolling || state.dieSpecials[aura.slot]!=="aura") continue;
     ctx.beginPath();
@@ -2257,50 +2221,6 @@ function draw() {
   ctx.restore();
 }
 
-const holdButton = byId("hold-toggle");
-const throwHint = byId("throw-hint"), slamStatus = byId("slam-status");
-function showThrowStatus(message) {
-  throwStatus = message;
-  throwStatusUntil = time+1.9;
-}
-function renderThrowControls() {
-  const coarse = coarsePointer.matches;
-  const hint = holdMode ? "止まったダイスを選んで固定" : held ?
-    "別のダイスの近くをスラム。同じ目が揃うと大共鳴 ×3" :
-    (coarse ? "タップで投擲 · 長押し／フリックで強く" : "クリックで投擲 · 長押し／ドラッグで強く");
-  const button = holdMode ? "選択中" : held ? "解除 · "+held.die.face : "ホールド";
-  const remaining = Math.max(0,slamReady-time);
-  const status = time<throwStatusUntil ? throwStatus : remaining>0 ? "スラムまで "+remaining.toFixed(1)+"秒" :
-    (held ? "固定 "+held.die.face+" · "+Math.ceil(held.until-time)+"秒 · スラム可能" :
-      "フェルトを"+(coarse ? "タップ" : "クリック")+"でスラム");
-  if (throwHint.textContent!==hint) throwHint.textContent = hint;
-  if (holdButton.textContent!==button) holdButton.textContent = button;
-  if (slamStatus.textContent!==status) slamStatus.textContent = status;
-  const pressed = String(holdMode || !!held);
-  if (holdButton.getAttribute("aria-pressed")!==pressed) holdButton.setAttribute("aria-pressed",pressed);
-}
-function toggleHold() {
-  if (held) held = null;
-  else holdMode = !holdMode;
-  renderThrowControls();
-}
-function chooseHold(die) {
-  if (!die || die.rolling || isFusing(die)) {
-    showThrowStatus("ホールドは止まったダイスを選択");
-    renderThrowControls();
-    return;
-  }
-  held = {die,until:time+HOLD_DURATION,misses:0};
-  die.vx = 0;
-  die.vy = 0;
-  holdMode = false;
-  showThrowStatus("出目 "+die.face+" を固定");
-  renderThrowControls();
-}
-holdButton.addEventListener("click",()=>{
-  unlockAudio();
-  toggleHold();
-});
 function inputPoint(event) {
   const rect = canvas.getBoundingClientRect();
   const shift = tableShake();
@@ -2349,15 +2269,14 @@ function keyboardRoll() {
   let nearest;
   let limit = Infinity;
   for (const die of dice) {
-    if (die.rolling || isFusing(die) || isHeld(die)) continue;
+    if (die.rolling || isFusing(die)) continue;
     const distance = Math.hypot(die.x-x,die.y-y);
     if (distance <= limit) {
       nearest = die;
       limit = distance;
     }
   }
-  if (holdMode) chooseHold(nearest);
-  else if (nearest) manualRoll(nearest,x,y);
+  if (nearest) manualRoll(nearest,x,y);
 }
 function aimPower(gesture,now) {
   const span = Math.min(board.w,board.h);
@@ -2370,20 +2289,7 @@ function aimPower(gesture,now) {
   return {power,flick,angle:flick ? Math.atan2(dy,dx) : undefined};
 }
 function drawThrowGuide() {
-  if (held) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(held.die.x,held.die.y,22*unit*starStats(held.die).size,0,Math.PI*2);
-    ctx.strokeStyle = "#b9fff1";
-    ctx.lineWidth = 2*unit;
-    ctx.stroke();
-    ctx.fillStyle = "#d2fff2";
-    ctx.font = "700 "+Math.max(10,11*unit)+"px 'Segoe UI',sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("固定 "+held.die.face,held.die.x,held.die.y+29*unit);
-    ctx.restore();
-  }
-  if (!pointer?.target || pointer.target.rolling || holdMode || isHeld(pointer.target)) return;
+  if (!pointer?.target || pointer.target.rolling) return;
   const {power,angle} = aimPower(pointer,performance.now());
   if (power<=1.01) return;
   const {x,y} = pointer.target;
@@ -2419,7 +2325,7 @@ function drag(event) {
   const distance = Math.hypot(at.x-pointer.last.x,at.y-pointer.last.y);
   if (distance<=.25) return;
   pointer.speed = distance/unit/Math.max(8,now-pointer.movedAt);
-  if (!pointer.target && !holdMode && aimPower({...pointer,last:at},now).flick) {
+  if (!pointer.target && aimPower({...pointer,last:at},now).flick) {
     const crossed = findDie(pointer.last,at);
     if (crossed) manualRoll(crossed,pointer.last.x,pointer.last.y,1.25,Math.atan2(at.y-pointer.last.y,at.x-pointer.last.x));
   }
@@ -2432,35 +2338,28 @@ canvas.addEventListener("pointerup",event=>{
   drag(event);
   const gesture = pointer;
   pointer = null;
-  if (holdMode) {
-    chooseHold(gesture.target ?? findDie(gesture.last,gesture.last));
-    return;
-  }
-  const {power,angle,flick} = aimPower(gesture,performance.now());
-  const {target,last,start} = gesture;
+  const {power,angle} = aimPower(gesture,performance.now());
+  const {target,start} = gesture;
   if (target && !target.rolling) manualRoll(target,start.x,start.y,power,angle);
-  else if (!flick && !tableSlam(last) && time>=slamReady) showThrowStatus("スラムは動いているダイスの近くで使えます");
-  renderThrowControls();
 });
 function release(event) {if (pointer?.id===event.pointerId) pointer=null;}
 for (const event of ["pointerup","pointercancel","lostpointercapture"]) canvas.addEventListener(event,release);
 document.addEventListener("keydown",event=>{
-  if (event.repeat || dialog.open || vipDialog.open ||
-      (!["Space","KeyH","KeyS"].includes(event.code) && !(event.key==="Enter" && event.target===canvas))) return;
+  if (event.repeat || dialog.open || (event.code!=="Space" && !(event.key==="Enter" && event.target===canvas))) return;
   if (event.target!==canvas && (event.target!==document.body || !matchMedia("(pointer:fine)").matches)) return;
   event.preventDefault();
   unlockAudio();
-  if (event.code==="KeyH") toggleHold();
-  else if (event.code==="KeyS") {
-    const target = dice.find(die=>!isHeld(die) && die.rolling) ?? dice.find(die=>!isHeld(die));
-    if (target) tableSlam(target);
-  } else keyboardRoll();
+  keyboardRoll();
 });
 
 applySkin();
 resize();
 resetTable();
+recordCollection();
+awardMilestones(false);
+showIdle(state.savedAt,Date.now());
 trackMastery();
+save();
 draw();
 updateSound();
 renderUI();
@@ -2468,7 +2367,7 @@ const observer = new ResizeObserver(requestResize);
 observer.observe(canvas);
 window.addEventListener("resize",requestResize);
 
-let previous=performance.now(), carry=0, lastUI=0, lastFeverUI=0, lastThrowUI=0;
+let previous=performance.now(), carry=0, lastUI=0, lastFeverUI=0;
 function frame(now) {
   if (!document.hidden) {
     if (resizePending) resize();
@@ -2488,10 +2387,6 @@ function frame(now) {
     } else if (state.feverLeft>0 && now-lastFeverUI>=50) {
       renderFever();
       lastFeverUI=now;
-    }
-    if (now-lastThrowUI>=100) {
-      renderThrowControls();
-      lastThrowUI=now;
     }
   }
   previous=now;

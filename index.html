@@ -23,7 +23,6 @@
     <symbol id="i-arm" viewBox="0 0 24 24"><path d="M4 20h16M7 20v-3l4-5m3 2 3 6M9 9l4-5m2 3 4 2m0 0 2-2m-2 2v3"/><circle cx="12" cy="12" r="2.6"/><circle cx="14" cy="5" r="1.7"/></symbol>
     <symbol id="i-speed" viewBox="0 0 24 24"><path d="m13 2-8 12h6l-1 8 9-12h-6z"/></symbol>
     <symbol id="i-wave" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8 8a5.7 5.7 0 0 0 0 8m8-8a5.7 5.7 0 0 1 0 8M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/></symbol>
-    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16M8 15v-3m5 3V8m5 7V5"/></symbol>
     <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 11a8 8 0 1 1 2 7M4 5v6h6"/></symbol>
     <symbol id="i-hand" viewBox="0 0 24 24"><path d="M9 13V5a1.5 1.5 0 0 1 3 0v6l4-.5a3 3 0 0 1 3 3V16a5 5 0 0 1-5 5h-1a5 5 0 0 1-4-2l-4-5a1.5 1.5 0 0 1 2-2l2 1zM5 6V4m11 1 1-2"/></symbol>
   </svg>
@@ -47,10 +46,10 @@
         </div>
         <div class="stage-stats">
           <div><span class="metric-label">ダイス</span><strong id="dice-count">1 <small>/ 40</small></strong></div>
-          <div><span class="metric-label">自動アーム</span><strong id="arm-count">0</strong></div>
+          <div id="arm-stat" hidden><span class="metric-label">自動アーム</span><strong id="arm-count">0</strong></div>
         </div>
       </div>
-      <div class="fever-meter" id="fever-meter">
+      <div class="fever-meter" id="fever-meter" hidden>
         <span class="fever-caption" aria-live="polite"><span id="fever-label">フィーバー</span><small id="fever-effect" hidden>コイン・アーム ×2</small></span>
         <div id="fever-progress" class="fever-track" role="progressbar" aria-labelledby="fever-label"
              aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="fever-fill"></span></div>
@@ -62,94 +61,83 @@
         <div id="achievement-notice" class="notice achievement-notice" role="status"></div>
       </div>
       <div class="stage-bottom">
-        <div>
-          <p id="play-hint"><svg><use href="#i-hand"/></svg><span id="throw-hint">タップで投擲 · 長押し／フリックで強く投げる</span></p>
-          <p id="table-hint"><span id="slam-status">フェルトをタップでスラム</span></p>
-        </div>
-        <button id="hold-toggle" class="hold-toggle" aria-pressed="false" aria-describedby="throw-hint">ホールド</button>
-        <span class="key-hint"><kbd>SPACE</kbd> 投擲　<kbd>H</kbd> ホールド　<kbd>S</kbd> スラム</span>
+        <p id="play-hint"><svg><use href="#i-hand"/></svg><span>タップで投擲 · ドラッグ／フリックで方向を決める</span></p>
+        <span class="key-hint"><kbd>SPACE</kbd> 投擲</span>
       </div>
     </section>
 
-    <aside class="panel" aria-label="アップグレード、VIP、図鑑・実績、統計">
+    <aside class="panel" aria-label="ダイスショップ、強化、スキルツリー、図鑑・実績、統計">
       <div class="tabs" role="tablist" aria-label="パネル">
-        <button id="shop-tab" role="tab" aria-selected="true" aria-controls="shop" data-tab="shop"><svg><use href="#i-speed"/></svg>アップグレード<span id="merge-tab-count" class="merge-count" hidden></span></button>
-        <button id="vip-tab" role="tab" aria-selected="false" aria-controls="vip" data-tab="vip" tabindex="-1"><svg><use href="#i-gem"/></svg>VIP</button>
+        <button id="shop-tab" role="tab" aria-selected="true" aria-controls="shop" data-tab="shop">ダイスショップ</button>
+        <button id="enhance-tab" role="tab" aria-selected="false" aria-controls="enhance" data-tab="enhance" tabindex="-1">強化<span id="merge-tab-count" class="merge-count" hidden></span></button>
+        <button id="skills-tab" role="tab" aria-selected="false" aria-controls="skills" data-tab="skills" tabindex="-1">スキルツリー</button>
         <button id="collection-tab" role="tab" aria-selected="false" aria-controls="collection" data-tab="collection" tabindex="-1">図鑑</button>
-        <button id="stats-tab" role="tab" aria-selected="false" aria-controls="stats" data-tab="stats" tabindex="-1"><svg><use href="#i-chart"/></svg>統計</button>
+        <button id="stats-tab" role="tab" aria-selected="false" aria-controls="stats" data-tab="stats" tabindex="-1">統計</button>
       </div>
       <section id="shop" class="panel-content" role="tabpanel" aria-labelledby="shop-tab">
         <div class="panel-heading">
-          <h2>テーブル強化</h2>
+          <h2>ダイスショップ</h2>
           <div class="shop-goal" id="shop-goal">
             <div><strong id="goal-label">次の目標</strong><span id="goal-value"></span></div>
             <progress id="goal-progress" aria-labelledby="goal-label" max="1" value="0"></progress>
             <p id="goal-reason"></p>
           </div>
         </div>
+        <div id="shop-items" class="upgrades"></div>
+        <section class="panel-group" id="special-shop" aria-labelledby="special-title" hidden>
+          <h3 id="special-title">特殊ダイス</h3>
+          <p class="material-rule">テーブルに追加します。種類ごとの上限はスキルツリーで増やせます。</p>
+          <div id="special-dice" class="upgrades"></div>
+        </section>
+      </section>
+      <section id="enhance" class="panel-content" role="tabpanel" aria-labelledby="enhance-tab" hidden>
+        <div class="panel-heading"><h2>強化</h2></div>
         <button id="merge-jump" class="merge-jump" hidden></button>
         <div id="upgrades" class="upgrades"></div>
-        <div class="tier">
+        <div class="tier" id="material-section" hidden>
           <div class="tier-heading"><span>ダイスの材質内訳</span></div>
           <div id="materials" class="materials" aria-label="ダイスの材質"></div>
           <p id="material-rule" class="material-rule"></p>
         </div>
-        <section class="vip-group merge-group" aria-labelledby="merge-title">
+        <section class="panel-group merge-group" id="merge-section" aria-labelledby="merge-title" hidden>
           <h3 id="merge-title" tabindex="-1">ダイス合成</h3>
           <p class="material-rule">コインを使い、材質・特殊タイプ・星が同じダイス2個を次の星の1個にします。上限は★4です。</p>
           <p id="merge-empty" class="material-rule">合成できる組み合わせはありません。</p>
           <div id="merge-options" class="upgrades"></div>
         </section>
-        <section class="vip-group" aria-labelledby="special-title">
-          <h3 id="special-title">特殊ダイス</h3>
-          <p class="material-rule">★1の通常ダイスを変換します。各種類4個まで。VIP転生で変換はリセットされます。</p>
-          <div id="special-dice" class="upgrades"></div>
-        </section>
       </section>
-      <section id="vip" class="panel-content" role="tabpanel" aria-labelledby="vip-tab" hidden>
-        <div class="panel-heading"><h2>VIPテーブル</h2><p>転生でチップを獲得し、恒久タレントを解放。</p></div>
-        <dl class="vip-summary">
-          <div><dt>VIPチップ</dt><dd id="vip-chips">0</dd></div>
-          <div><dt>VIP転生回数</dt><dd id="vip-count">0</dd></div>
-        </dl>
-        <div class="vip-prestige">
-          <div><h3>VIP転生</h3><strong id="vip-reward">+0 チップ</strong></div>
-          <p id="vip-condition"></p>
-          <progress id="vip-progress" aria-label="次のVIPチップ獲得までの進捗" max="40000" value="0"></progress>
-          <button id="vip-rebirth" class="buy" disabled>VIP転生する</button>
-        </div>
-        <section class="vip-group" aria-labelledby="vip-skins-title">
-          <h3 id="vip-skins-title">テーブルスキン</h3>
-          <div id="vip-skins" class="vip-skins"></div>
-        </section>
-        <section class="vip-group mastery-section" id="mastery-section" aria-labelledby="mastery-title" hidden>
-          <h3 id="mastery-title">ネオンマスタリー</h3>
-          <p class="material-rule">各目標でVIPチップを獲得。全達成でオーロラブラックが解放されます。</p>
-          <div id="mastery-goals"></div>
-        </section>
-        <section class="vip-group" aria-labelledby="vip-talents-title">
-          <h3 id="vip-talents-title">タレントツリー</h3>
-          <div id="vip-talents"></div>
-        </section>
+      <section id="skills" class="panel-content" role="tabpanel" aria-labelledby="skills-tab" hidden>
+        <div class="panel-heading"><h2>スキルツリー</h2></div>
+        <p id="skills-locked">ロック中。ダイスショップで1,000コインを使って解放できます。</p>
+        <div id="skill-nodes" hidden></div>
       </section>
       <section id="collection" class="panel-content" role="tabpanel" aria-labelledby="collection-tab" hidden>
-        <div class="panel-heading"><h2>図鑑と実績</h2><p>収集記録と実績報酬はVIP転生後も引き継がれます。</p></div>
-        <div class="vip-summary">
+        <div class="panel-heading"><h2>図鑑と実績</h2><p>実績の達成で恒久報酬を獲得できます。</p></div>
+        <div class="journal-summary">
           <button class="journal-link" data-journal-jump="collection-title"><span>コレクション</span><strong id="collection-count"></strong></button>
           <button class="journal-link" data-journal-jump="milestones-title"><span>達成済みの実績</span><strong id="achievement-count"></strong></button>
         </div>
-        <section class="vip-group" aria-labelledby="milestones-title">
+        <section class="panel-group" aria-labelledby="milestones-title">
           <h3 id="milestones-title" tabindex="-1">実績と恒久報酬</h3>
           <p id="achievement-bonus" class="material-rule"></p>
           <div id="milestone-list" class="milestone-list"></div>
         </section>
-        <section class="vip-group" aria-labelledby="collection-title">
+        <section class="panel-group" aria-labelledby="collection-title">
           <h3 id="collection-title" tabindex="-1">コレクション</h3>
           <div id="collection-list"></div>
         </section>
+        <section class="panel-group" aria-labelledby="skins-title">
+          <h3 id="skins-title">テーブルスキン</h3>
+          <div id="table-skins" class="table-skins"></div>
+        </section>
+        <section class="panel-group" id="mastery-section" aria-labelledby="mastery-title" hidden>
+          <h3 id="mastery-title">テーブルマスタリー</h3>
+          <p class="material-rule">全達成でオーロラブラックが解放されます。</p>
+          <div id="mastery-goals"></div>
+        </section>
       </section>
       <section id="stats" class="panel-content" role="tabpanel" aria-labelledby="stats-tab" hidden>
-        <div class="panel-heading"><h2>プレイ統計</h2><p>基礎配当は出目 × 材質倍率。0.8 秒以内に同じ目が着地すると共鳴ボーナスが加わります。</p></div>
+        <div class="panel-heading"><h2>プレイ統計</h2><p>出目とダイスの強化に応じて着地時にコインを獲得します。</p></div>
         <dl id="records" class="records"></dl>
       </section>
       <footer class="panel-footer">
@@ -161,17 +149,8 @@
   <dialog id="reset-dialog" aria-labelledby="reset-title">
     <form method="dialog">
       <h2 id="reset-title">セーブをリセット</h2>
-      <p>コイン、強化、プレイ記録、図鑑・実績、VIPチップと恒久タレントを初期状態に戻します。</p>
+      <p>コイン、強化、スキル、プレイ記録、図鑑・実績を初期状態に戻します。</p>
       <div><button value="cancel" autofocus>キャンセル</button><button value="reset" class="danger">リセットする</button></div>
-    </form>
-  </dialog>
-  <dialog id="vip-dialog" aria-labelledby="vip-title">
-    <form method="dialog">
-      <h2 id="vip-title">VIPテーブル転生</h2>
-      <p id="vip-confirm-text"></p>
-      <p>所持コイン、ダイス数、個別の材質、特殊タイプ、星、アーム、衝撃波、フィーバーをリセットします。新しいダイスの初期材質は「材質の下地」のレベルで決まります。未解放なら木製です。</p>
-      <p>VIPチップ、恒久タレント、スキンと累計記録を引き継ぎます。</p>
-      <div><button value="cancel" autofocus>キャンセル</button><button value="rebirth" class="vip-confirm">転生する</button></div>
     </form>
   </dialog>
 </body>
