@@ -945,7 +945,7 @@ function purchaseFeedback(element,label,price) {
   clearTimeout(receiptTimer);
   receiptTimer = setTimeout(()=>{receipt.hidden=true;},1900);
   if (!reducedMotion.matches) element.animate([
-    {boxShadow:"inset 0 0 0 2px #f6d696, 0 0 14px #dfb56d77"},
+    {boxShadow:"inset 0 0 0 4px #ffda82, 0 0 16px #dfb56d99",filter:"brightness(1.16)"},
     {boxShadow:"inset 0 0 0 1px transparent, 0 0 0 transparent"},
   ],{duration:540,easing:"ease-out"});
 }
@@ -1321,7 +1321,12 @@ function sound(type,combo = 1) {
     tone(784,784,.23,.038,"sine",.39);
     tone(1047,1047,.31,.031,"triangle",.43);
   }
-  if (type === "coin" || type === "buy") {
+  if (type === "buy") {
+    tone(185,85,.055,.035,"triangle");
+    tone(660,660,.11,.026,"sine",.035);
+    tone(990,990,.16,.022,"sine",.085);
+  }
+  if (type === "coin") {
     tone(720,880,.082,.03,"sine");
     tone(1050,1160,.092,.024,"sine",.036);
   }
@@ -1889,6 +1894,34 @@ function applySkin() {
   document.querySelector(".panel").dataset.skin = skin;
   if (board) paintTable();
 }
+// Pressed into the felt once per backdrop repaint.
+function stampTable(g,cx,cy,r,color) {
+  g.save();
+  g.translate(cx,cy);
+  g.scale(r,r);
+  g.strokeStyle = color;
+  g.fillStyle = color;
+  g.globalAlpha = .32;
+  g.lineWidth = .016;
+  for (let i=0;i<48;i++) {
+    g.beginPath();
+    g.moveTo(0,-.98);
+    g.lineTo(0,i%4 ? -.95 : -.89);
+    g.stroke();
+    g.rotate(Math.PI/24);
+  }
+  // An isometric maker's mark above the table lettering.
+  g.beginPath();
+  g.moveTo(0,-.68); g.lineTo(.24,-.55); g.lineTo(.24,-.30);
+  g.lineTo(0,-.17); g.lineTo(-.24,-.30); g.lineTo(-.24,-.55); g.closePath();
+  g.moveTo(-.24,-.55); g.lineTo(0,-.42); g.lineTo(.24,-.55);
+  g.moveTo(0,-.42); g.lineTo(0,-.17);
+  g.stroke();
+  for (const [x,y] of [[0,-.55],[-.16,-.44],[-.08,-.33],[.08,-.35],[.16,-.45],[.12,-.40]]) {
+    g.beginPath(); g.arc(x,y,.019,0,Math.PI*2); g.fill();
+  }
+  g.restore();
+}
 function paintTable() {
   const g = backdropCtx, rand = seededRandom(91273);
   g.resetTransform();
@@ -1911,6 +1944,9 @@ function paintTable() {
   rounded(g,o.x,o.y+depth,o.w,o.h,round);
   g.fillStyle = lip;
   g.fill();
+  g.strokeStyle = "#18140f";
+  g.lineWidth = 3.4*unit;
+  g.stroke();
   rounded(g,o.x,o.y,o.w,o.h,round);
   g.fillStyle = gradient(g,o.x,o.y,o.x+o.w*.72,o.y+o.h,
     [[0,skin.rail[0]],[.2,skin.rail[1]],[.45,skin.rail[2]],[.74,skin.rail[3]],[1,skin.rail[4]]]);
@@ -1980,6 +2016,7 @@ function paintTable() {
   for (const [dx,dy] of [[0,1],[0,-1],[-1,0],[1,0]]) {
     diamond(g,x+w/2+circleR*.975*dx,y+h/2+circleR*.975*dy,3.2*unit,"#d2c08f7c");
   }
+  stampTable(g,x+w/2,y+h/2,circleR,skin.inlay);
   g.textAlign = "center";
   g.textBaseline = "middle";
   g.fillStyle = skin.inlay+"6e";
@@ -2076,8 +2113,8 @@ function drawDie(die,preset = null) {
       gradient(ctx,0,Math.min(p.y,q.y,r.y,s.y),0,Math.max(p.y,q.y,r.y,s.y),
         [[0,bright ? material.high : material.low],[1,bright ? material.low : material.side]]);
     ctx.fill();
-    ctx.lineWidth = .86*unit;
-    ctx.strokeStyle = bright ? special?.color ?? (stars>1 ? "#ffe7a3" : material.edge) : material.edge;
+    ctx.lineWidth = 1.7*unit;
+    ctx.strokeStyle = "#28231f";
     ctx.stroke();
     if (rank===0 && bright) {
       ctx.save();
@@ -2095,7 +2132,7 @@ function drawDie(die,preset = null) {
     ctx.save();
     ctx.transform(ux,uy,vx,vy,p.x,p.y);
     if (bright) {
-      ctx.strokeStyle = rank===3 ? "#fff7c5bd" : "#fff6dc73";
+      ctx.strokeStyle = special?.color ?? (stars>1 || rank===3 ? "#fff4bc" : "#fff4d9ae");
       ctx.lineWidth = .026;
       ctx.beginPath();ctx.moveTo(.08,.86);ctx.lineTo(.08,.09);ctx.lineTo(.86,.09);ctx.stroke();
       if (rank===2) {
@@ -2108,7 +2145,7 @@ function drawDie(die,preset = null) {
       }
     }
     for (const [dx,dy] of pips[value]) {
-      const x=.5+dx*.237, y=.5+dy*.237, radius=value===1 ? .094 : .074;
+      const x=.5+dx*.237, y=.5+dy*.237, radius=value===1 ? .105 : .082;
       ctx.beginPath();ctx.arc(x,y+.014,radius,0,Math.PI*2);
       ctx.fillStyle = bright ? "#fff7cf70" : "#ffedb44d";ctx.fill();
       ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);
@@ -2120,13 +2157,13 @@ function drawDie(die,preset = null) {
     const x = die.x-die.z*.1+size*.78, y = die.y-die.z*.51-size*.95;
     ctx.save();
     ctx.beginPath();
-    ctx.arc(x,y,Math.max(6,7.4*unit),0,Math.PI*2);
+    ctx.arc(x,y,Math.max(7,8.2*unit),0,Math.PI*2);
     ctx.fillStyle = "#142e28";
     ctx.fill();
     ctx.strokeStyle = special.color;
     ctx.lineWidth = Math.max(1,unit);
     ctx.stroke();
-    ctx.font = "750 "+Math.max(8,9*unit)+"px 'Segoe UI',sans-serif";
+    ctx.font = "750 "+Math.max(9,10*unit)+"px 'Segoe UI',sans-serif";
     ctx.textBaseline = "middle";
     ctx.textAlign = "center";
     ctx.fillStyle = special.color;
@@ -2503,9 +2540,16 @@ function aimPower(gesture,now) {
 function drawThrowGuide() {
   if (!pointer?.target || pointer.target.rolling) return;
   const {power,angle} = aimPower(pointer,performance.now());
-  if (power<=1.01) return;
   const {x,y} = pointer.target;
   ctx.save();
+  ctx.beginPath();
+  ctx.arc(x,y,22*unit,0,Math.PI*2);
+  ctx.strokeStyle = "#15271eca";
+  ctx.lineWidth = 4*unit;
+  ctx.stroke();
+  ctx.strokeStyle = "#fff1c78a";
+  ctx.lineWidth = unit;
+  ctx.stroke();
   ctx.strokeStyle = "#ffe1a0";
   ctx.lineWidth = 2.8*unit;
   ctx.beginPath();

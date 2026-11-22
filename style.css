@@ -264,6 +264,91 @@ dialog p{margin:10px 0 20px;font-size:13px}
 dialog form div{display:flex;justify-content:flex-end;gap:8px}
 dialog button{min-height:44px;padding:0 10px;border-radius:6px;border:1px solid #cbbb9f;background:var(--paper);color:var(--ink);font-size:12px}
 dialog .danger{background:#814332;color:white;border-color:#814332}
+/* Lacquered cabinet, felt and brass hardware. */
+:root{--rim:#211d17;--brass:#cc9d5e;--ivory:#fff2d4}
+.masthead{
+  border-bottom:3px solid var(--rim);
+  background:linear-gradient(102deg,#293b31,#132820 66%);
+  box-shadow:inset 0 -1px #a88a55;
+}
+.brand-icon,.sound{
+  border:2px solid var(--rim);border-radius:9px;
+  box-shadow:inset 0 1px #fff4,0 3px var(--rim);
+}
+.brand-icon{color:#432e1c;background:linear-gradient(135deg,#ffe6a4,#c08b4a)}
+.brand-icon svg{stroke-width:2.3}
+.balance-icon{
+  border:2px solid #392916;border-radius:50%;color:#634019;
+  background:linear-gradient(145deg,#fff0ac,#e7b258 65%,#bb7938);
+  box-shadow:inset 0 0 0 2px #ffdd8a,0 3px #6a482b,0 5px #111c15;
+}
+.balance strong,.stage-stats strong{text-shadow:0 2px #111c16}
+.stage-bottom{padding:7px 0 0;border-top:1px solid #c5aa703d}
+.panel{
+  border-inline-start:4px solid var(--rim);
+  background:repeating-linear-gradient(0deg,transparent 0 24px,#7356320a 24px 25px),linear-gradient(120deg,var(--panel-surface),#e8dabc);
+  box-shadow:inset 3px 0 #bb9b6a;
+}
+.tabs,.skills-open .tabs{
+  align-items:center;gap:4px;padding:7px 9px;
+  background:linear-gradient(#384237,#232b23);border-bottom:3px solid var(--rim);
+  box-shadow:inset 0 1px #bda57a77;
+}
+.tabs button,.skills-open .tabs button{
+  justify-content:center;min-height:44px;border:2px solid transparent;border-radius:6px;
+  padding:3px 5px;color:#f1e5cc;font-size:12px;line-height:1.15;
+}
+.tabs button:nth-child(-n+3){flex-direction:column;gap:3px;flex:1 0 auto}
+.tabs button svg{width:17px;height:17px;color:#dcb87c}
+.tabs button:nth-child(n+4){font-size:11px}
+.tabs button:hover,.skills-open .tabs button:hover{color:white;background:#445347}
+.tabs button[aria-selected=true],.skills-open .tabs button[aria-selected=true]{
+  background:linear-gradient(#ffe7aa,#d9aa65);border-color:var(--rim);color:#32291c;
+  box-shadow:inset 0 1px #ffefca,0 2px var(--rim);
+}
+.tabs button[aria-selected=true] svg{color:#674722}
+.tabs button:focus-visible{outline-color:#ffe3a3;outline-offset:0}
+#enhance-tab{position:relative}
+#enhance-tab .merge-count{position:absolute;top:1px;right:0}
+.panel-heading h2,.skill-header h2{font-family:"Yu Mincho","Hiragino Mincho ProN",serif;font-weight:900}
+.panel-heading{border-bottom:3px double #927951}
+.shop-goal{margin-top:13px;padding:9px 12px;border-inline-start:3px solid #90703d;background:#fff8e6ae}
+.shop-goal progress{height:8px}
+.upgrades{gap:12px}
+.upgrade,.upgrade:has(.buy:not(:disabled)){
+  border:2px solid #534630;border-radius:8px;padding:12px;
+  background:linear-gradient(115deg,#fffae9,var(--panel-surface));
+  box-shadow:inset 0 1px #fff,0 3px #79654a;
+}
+.upgrade-icon{
+  border:2px solid #514432;color:#4d3722;border-radius:7px;
+  background:linear-gradient(135deg,#ffe4a8,#c8955f);box-shadow:inset 0 1px #fff8,0 2px #71593d;
+}
+.upgrade[data-kind=tree] .upgrade-icon{color:#244d46;background:linear-gradient(145deg,#cae9ce,#88b7a2)}
+.upgrade-name{font-weight:800}
+.upgrade-detail{line-height:1.45}
+.buy,.skill-entry button,.skill-detail-offer button:not(:disabled){
+  border:2px solid var(--rim);box-shadow:inset 0 1px #fff5,0 3px var(--rim);
+}
+.buy:disabled{background:#e9e2d2;border:1px solid #bbae94;color:#625744;box-shadow:inset 0 1px 2px #68533019}
+.panel-footer{background:#eee3ce;border-top:3px double #b9a786}
+.skills-open .tabs button:nth-child(-n+3){flex:0 0 auto;min-width:85px}
+.skill-entry,.skill-chart,.skill-inspector{
+  border:2px solid #77664a;box-shadow:inset 0 1px #d7be8129,0 4px #0b1511;
+}
+.skill-node{border-width:2px;box-shadow:0 3px #080e0b,inset 0 1px #ffffff1c}
+.skill-node[data-state=ready]{background:linear-gradient(#493a24,#312b20)}
+.skill-node[data-state=learned]{background:linear-gradient(#304c3c,#1e342b)}
+#purchase-receipt,.notice{border:2px solid #b39259;box-shadow:0 3px #182119}
+.game .buy:not(:disabled):active,.game .sound:active,.skill-detail-offer button:not(:disabled):active{
+  transform:translateY(2px);box-shadow:inset 0 1px 2px #131a1640;
+}
+@media(hover:hover){
+  .upgrade:has(.buy:not(:disabled):hover){background:#fff9df;border-color:var(--panel-accent)}
+}
+@media(min-width:781px) and (pointer:fine){
+  .game{grid-template-columns:minmax(0,1fr) clamp(340px,35vw,525px)}
+}
 @media(max-width:780px),(pointer:coarse){
   .game{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,3fr) minmax(0,2fr)}
   .masthead{padding:6px 14px}
@@ -293,3 +378,17 @@ dialog .danger{background:#814332;color:white;border-color:#814332}
   .tabs button{gap:4px;font-size:12px}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+@media(max-width:420px){
+  .tabs,.skills-open .tabs{gap:2px;padding-inline:5px}
+  .skills-open .tabs button:nth-child(-n+3){flex:1 0 auto;min-width:0}
+  .upgrade,.upgrade:has(.buy:not(:disabled)){padding:9px}
+}
+@media(max-height:480px) and (orientation:landscape){
+  .game{grid-template-columns:minmax(0,1fr) minmax(300px,39%);grid-template-rows:auto minmax(0,1fr)}
+  .masthead{padding:3px 12px}
+  .stage{padding:5px 8px;gap:2px}
+  .stage-bottom{padding:2px 0;font-size:10px}
+  .balance strong{font-size:25px}
+  .panel{border-top:0}
+}
