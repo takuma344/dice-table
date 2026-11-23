@@ -18,7 +18,7 @@ const materials = [
 ];
 const caps = {dice:40, material:3, arms:6, speed:7, wave:8, baseIncome:12, quality:5};
 const TREE_PRICE = 1000;
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 const LEGACY_CHIP_VALUE = 250;
 const MATERIAL_PRICES = [85,900,6200];
 const SPECIAL_DICE = {
@@ -26,6 +26,25 @@ const SPECIAL_DICE = {
   aura:{ink:"#236c71",stamp:"M3 3H9V13Q9 17 12 17Q15 17 15 13V3H21V14Q21 23 12 23Q3 23 3 14Z",skill:"specialAura",name:"増幅ダイス",mark:"増",icon:"gem",color:"#90eed0",cost:1150,detail:"静止中、近くの他のダイスの配当を25%増やす"},
   heat:{ink:"#a45517",stamp:"M13 1Q17 9 15 12Q19 10 19 7Q26 19 15 23Q18 18 12 14Q12 18 9 19Q8 21 10 23Q0 20 4 12Q7 15 8 9Q9 4 13 1Z",skill:"specialHeat",name:"熱気ダイス",mark:"熱",icon:"speed",color:"#ffe08a",cost:1000,detail:"出目4〜6でフィーバーゲージを6ポイント加算"},
 };
+// Shared palettes and pixel motifs for the playable pieces and their catalog art.
+const specialSkins = new Map([
+  [SPECIAL_DICE.blast,{
+    high:"#762c32",low:"#bc4635",side:"#3b202b",edge:"#291924",pip:"#fff2d2",
+    glow:"#ff7850",shine:"#ffd587",
+    motif:"M3 13H7V10H11V6H15V3H17V8H14V12H11V16H8V20H4V17H3Z M17 17H20V13H24V10H29V13H26V16H23V20H20V23H16V28H13V23H16V20H17Z",
+  }],
+  [SPECIAL_DICE.aura,{
+    high:"#185360",low:"#2f9a90",side:"#173343",edge:"#122634",pip:"#edffdf",
+    glow:"#79ffe0",shine:"#c5ffce",
+    motif:"M5 6H10V4H22V6H27V10H25V8H21V6H11V8H7V10H5Z M5 22H7V24H11V26H21V24H25V22H27V26H22V28H10V26H5Z M3 14H6V18H3Z M26 14H29V18H26Z",
+  }],
+  [SPECIAL_DICE.heat,{
+    high:"#a65a24",low:"#efaa39",side:"#573624",edge:"#382028",pip:"#fff6bd",
+    glow:"#ffc65d",shine:"#fff1a6",
+    motif:"M5 25H10V22H12V18H14V14H17V9H19V4H22V10H20V15H18V21H15V25H12V28H5Z M20 28H24V24H27V19H29V24H27V28H24V30H20Z M4 7H8V11H4Z",
+  }],
+]);
+const specialMotifs = new Map([...specialSkins].map(([special,skin])=>[special,new Path2D(skin.motif)]));
 const STAR_RANKS = [
   {pay:1,size:1,pulse:0,targets:0,match:0,heat:0,color:"#e5cc96"},
   {pay:2.65,size:1.13,pulse:.125,targets:1,match:.22,heat:4,color:"#ffe28d"},
@@ -39,7 +58,7 @@ const FUSION_IMPACT = .40;
 const FUSION_DURATION = .82;
 const MASTERY = [
   {track:"masteryGold",name:"金製の★4を作る",target:4},
-  {track:"masterySpecial",name:"特殊ダイスの★4を作る",target:4},
+  {track:"masterySpecial",name:"同じ特殊ダイスを4個分集める",target:4},
   {track:"masteryBurst",name:"1回のフィーバーで8回バースト",target:8},
 ];
 const ALL_MASTERY = (1<<MASTERY.length)-1;
@@ -93,10 +112,10 @@ const talents = [
     detail:n=>materials[n].name+"までの材質進化を強化に追加"},
   {id:"materialStart",lane:"dice",at:[1,4],icon:"die",title:"材質の下地",costs:[12500,165000],requires:n=>({material:n}),
     progress:(n,s)=>materialRequirement(n,s),
-    detail:n=>"新しく購入するダイスは"+materials[n].name+"から開始"},
+    detail:n=>"新しく購入する通常ダイスは"+materials[n].name+"から開始"},
   {id:"merge",lane:"dice",at:[2,3],icon:"gem",title:"ダイス合成",costs:[2500],requires:{quality:1},
     progress:(_,s)=>progressRequirement("ダイス（合成前換算）",dicePriceBasis(s),2),
-    detail:()=>"同じ材質・タイプ・星の2個を合成できる"},
+    detail:()=>"同じ材質・星の通常ダイス2個を合成できる"},
   {id:"income",lane:"roll",at:[3,4],icon:"coin",title:"配当アップ",costs:[3200,12500,90000,600000],requires:{resonance:1},
     progress:(n,s)=>progressRequirement("基礎収益アップ Lv.",s.baseIncome,[0,3,5,7][n-1]),
     detail:n=>"基礎配当 ＋"+20*n+"%"},
@@ -198,7 +217,7 @@ function dicePurchasePrice(basis) {
 }
 function rollValue(face,rank = 0,stars = 1) {
   const quality = face>=5 ? 1+.15*state.quality : 1;
-  return Math.round(face*materials[rank].multiplier*STAR_RANKS[stars-1].pay*
+  return Math.round(face*(rank===null ? 1 : materials[rank].multiplier)*STAR_RANKS[stars-1].pay*
     (1+.35*state.baseIncome)*(1+.2*state.talents.income)*quality);
 }
 function starStats(die) {return STAR_RANKS[state.dieStars[die.slot]-1];}
@@ -288,8 +307,10 @@ function load() {
     const specials = Array.isArray(raw.dieSpecials) ? raw.dieSpecials : [];
     const stars = Array.isArray(raw.dieStars) ? raw.dieStars : [];
     initial.dieStars = Array.from({length:initial.dice},(_,i)=>normalizeStars(stars[i]));
+    const version = Number.isFinite(raw.version) ? raw.version : 0;
+    const oldSpecialStar = version<3 ? initial.masterySpecial : 0;
     initial.highestStar = normalizeStars(Math.max(initial.highestStar,initial.masteryGold,
-      initial.masterySpecial,...initial.dieStars));
+      oldSpecialStar,...initial.dieStars));
     initial.merges = Math.max(initial.merges,initial.dieStars.reduce((total,star)=>total+2**(star-1)-1,0));
     initial.bestFeverBursts = Math.max(initial.bestFeverBursts,initial.masteryBurst,initial.feverBurstRolls);
     if (initial.feverLeft || initial.bestFeverBursts || initial.bestFeverCoins) initial.feverStarts = Math.max(1,initial.feverStarts);
@@ -309,7 +330,15 @@ function load() {
       return type;
     });
     initial.masteryRewards = Math.min(ALL_MASTERY,initial.masteryRewards);
-    if (!Number.isFinite(raw.version) || raw.version<SAVE_VERSION) migrateLegacy(initial,raw);
+    // Keep legacy stars and their purchase-equivalent counts. Special slots no longer have a material.
+    for (let slot=0;slot<initial.dice;slot++) {
+      if (initial.dieSpecials[slot]) initial.dieMaterials[slot] = null;
+    }
+    if (version<2) migrateLegacy(initial,raw);
+    if (version<3) {
+      if (oldSpecialStar>=4) initial.masteryRewards |= 1<<1;
+      initial.masterySpecial = initial.masteryRewards&(1<<1) ? 4 : 0;
+    }
     // Learned skills remain active even when an older save lacks a newly required parent.
     if (Object.values(initial.talents).some(Boolean)) initial.tree = true;
     initial.merges = Math.max(initial.merges,2**(initial.highestStar-1)-1);
@@ -375,7 +404,7 @@ function skinAvailable(skin,progress = state) {
 function recordCollection() {
   const entries = new Set(state.collection);
   state.highestStar = Math.max(state.highestStar,...state.dieStars);
-  for (const rank of state.dieMaterials) entries.add("material-"+rank);
+  for (const rank of state.dieMaterials) if (rank!==null) entries.add("material-"+rank);
   if (state.masteryGold) entries.add("material-3");
   for (const type of state.dieSpecials) if (type) entries.add("special-"+type);
   for (let star=1;star<=state.highestStar;star++) entries.add("star-"+star);
@@ -433,8 +462,9 @@ function trackMastery(scanDice = true) {
   if (scanDice) {
     for (let slot=0;slot<state.dice;slot++) {
       if (state.dieMaterials[slot]===3) state.masteryGold = Math.max(state.masteryGold,state.dieStars[slot]);
-      if (state.dieSpecials[slot]) state.masterySpecial = Math.max(state.masterySpecial,state.dieStars[slot]);
     }
+    state.masterySpecial = Math.max(state.masterySpecial,
+      ...Object.keys(SPECIAL_DICE).map(type=>Math.min(4,specialDiceBasis(state,type))));
   }
   state.masteryBurst = Math.max(state.masteryBurst,state.feverBurstRolls);
   const previous = state.masteryRewards;
@@ -513,7 +543,9 @@ for (const item of upgrades) {
 }
 // Printed specimens use the same enamel stamp as the pieces on the mat.
 function specimen(material, special) {
-  const ink = special?.ink ?? material.pip;
+  const skin = specialSkins.get(special);
+  material = skin ?? material;
+  const ink = skin?.shine ?? material.pip;
   const mark = special ? '<path fill="'+ink+'" d="'+special.stamp+'"/>' :
     '<g fill="'+ink+'"><circle cx="6" cy="6" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="18" cy="18" r="2.5"/></g>';
   return '<svg class="specimen" aria-hidden="true" viewBox="0 0 44 44">'+
@@ -521,6 +553,7 @@ function specimen(material, special) {
     '<path fill="'+material.low+'" d="M4 10 29 5 40 13 15 19Z"/>'+
     '<path fill="'+material.side+'" d="M29 5 40 13 39 34 29 38Z"/>'+
     '<path fill="'+material.high+'" d="M4 10 29 5 29 32 4 38Z"/></g>'+
+    (skin ? '<path fill="'+skin.glow+'" opacity=".52" d="'+skin.motif+'" transform="matrix(.71,-.14,0,.79,5,11)"/>' : '')+
     '<g stroke="none" transform="matrix(.76,-.16,0,.8,7,14)">'+mark+'</g>'+
     '<g fill="'+material.pip+'" stroke="none"><ellipse cx="34" cy="17" rx="1.6" ry="2"/><ellipse cx="35" cy="28" rx="1.6" ry="2"/></g></svg>';
 }
@@ -529,8 +562,7 @@ const specialViews = new Map();
 for (const [type,special] of Object.entries(SPECIAL_DICE)) {
   const row = document.createElement("article");
   row.className = "upgrade";
-  row.style.setProperty("--special-color",special.color);
-  row.innerHTML = '<span class="upgrade-icon special-icon">'+specimen(materials[0],special)+'</span><div><h4 class="upgrade-name">'+
+  row.innerHTML = '<span class="upgrade-icon special-icon">'+specimen(null,special)+'</span><div><h4 class="upgrade-name">'+
     special.name+'</h4><p class="upgrade-detail">'+special.detail+'</p><p class="special-status"></p></div>'+
     '<button class="buy"><span class="buy-label"></span><span class="price">'+icon("coin")+'<span></span></span></button>';
   const button = row.querySelector("button");
@@ -557,6 +589,7 @@ function buySpecial(type) {
   const slot = state.dice++;
   state.dieSpecials[slot] = type;
   spawnDie();
+  trackMastery();
   recordCollection();
   awardMilestones();
   markedDie = dice[slot];
@@ -594,43 +627,28 @@ mergeJump.addEventListener("click",()=>{
   byId("merge-title").focus({preventScroll:true});
 });
 function mergeKey(die) {
-  return [state.dieMaterials[die.slot],state.dieSpecials[die.slot] ?? "normal",state.dieStars[die.slot]].join("/");
+  return [state.dieMaterials[die.slot],"normal",state.dieStars[die.slot]].join("/");
 }
 function mergeName(die) {
-  const material = materials[state.dieMaterials[die.slot]].name;
-  const type = SPECIAL_DICE[state.dieSpecials[die.slot]]?.name ?? "通常ダイス";
-  return material+"・"+type;
+  return materials[state.dieMaterials[die.slot]].name+"・通常ダイス";
 }
 function mergePreview(die) {
-  const type = state.dieSpecials[die.slot], stars = state.dieStars[die.slot];
-  const next = stars+1;
-  const percent = range=>Math.round(range*1000)/10+"%";
-  let effect = "";
-  if (type==="blast") {
-    const before = specialStats(type,stars), after = specialStats(type,next);
-    effect = " · 爆裂半径 "+percent(before.range)+" → "+percent(after.range)+" · 出目"+after.face+"以上で発動";
-  }
-  if (type==="aura") {
-    const before = specialStats(type,stars), after = specialStats(type,next);
-    effect = " · 増幅 ＋"+before.bonus+"% → ＋"+after.bonus+"% · 半径 "+percent(before.range)+" → "+percent(after.range);
-  }
-  if (type==="heat") effect = " · 充填 ＋"+specialStats(type,stars).charge+" → ＋"+specialStats(type,next).charge+" pt";
+  const stars = state.dieStars[die.slot], next = stars+1;
   return "配当 ×"+STAR_RANKS[stars-1].pay+" → ×"+STAR_RANKS[next-1].pay+
-    " · 着地波 最大"+STAR_RANKS[next-1].targets+"個"+effect;
+    " · 着地波 最大"+STAR_RANKS[next-1].targets+"個";
 }
 function mergePrice(die) {
   const {slot} = die;
   const rosterFactor = 1+.05*Math.max(0,dicePriceBasis(state)-4);
-  const specialFactor = state.dieSpecials[slot] ? 1.75 : 1;
   return Math.ceil(MERGE_PRICES[state.dieStars[slot]-1]*
-    MERGE_MATERIAL_FACTORS[state.dieMaterials[slot]]*specialFactor*rosterFactor);
+    MERGE_MATERIAL_FACTORS[state.dieMaterials[slot]]*rosterFactor);
 }
 function renderMerges() {
   const unlocked = state.tree && !!state.talents.merge;
   byId("merge-section").hidden = !unlocked;
   const groups = new Map();
   for (const die of unlocked ? dice : []) {
-    if (state.dieStars[die.slot]>=MAX_STARS) continue;
+    if (state.dieSpecials[die.slot] || state.dieStars[die.slot]>=MAX_STARS) continue;
     const key = mergeKey(die);
     if (!groups.has(key)) groups.set(key,[]);
     groups.get(key).push(die);
@@ -682,7 +700,7 @@ function renderMerges() {
 }
 function mergeDice(key) {
   if (!state.tree || !state.talents.merge) return;
-  const pair = dice.filter(die=>mergeKey(die)===key).slice(0,2);
+  const pair = dice.filter(die=>!state.dieSpecials[die.slot] && mergeKey(die)===key).slice(0,2);
   if (pair.length!==2 || state.dieStars[pair[0].slot]>=MAX_STARS) return;
   const [first,second] = pair;
   const price = mergePrice(first);
@@ -773,7 +791,7 @@ for (const group of COLLECTION_GROUPS) {
     const row = document.createElement("div");
     row.className = "collection-entry";
     const [family,key] = entry.id.split("-");
-    const drawing = family==="special" ? specimen(materials[0],SPECIAL_DICE[key]) :
+    const drawing = family==="special" ? specimen(null,SPECIAL_DICE[key]) :
       family==="material" ? specimen(materials[Number(key)]) : icon(entry.icon);
     row.innerHTML = drawing+"<strong>"+entry.name+"</strong><small></small>";
     section.lastElementChild.append(row);
@@ -1124,13 +1142,15 @@ function renderGoal() {
   goalView.progress.value = state.coins;
 }
 function materialOffer() {
-  const from = Math.min(...state.dieMaterials);
+  const ranks = state.dieMaterials.filter(rank=>rank!==null);
+  if (!ranks.length) return {capped:false,locked:true,noNormalDice:true,price:Infinity};
+  const from = Math.min(...ranks);
   const to = from+1;
   const index = state.dieMaterials.indexOf(from);
-  const advanced = state.dieMaterials.filter(rank=>rank>=to).length;
+  const advanced = ranks.filter(rank=>rank>=to).length;
   const advancedBasis = state.dieMaterials.reduce((total,rank,slot)=>
-    total+(rank>=to ? 2**(state.dieStars[slot]-1) : 0),0);
-  const rosterFactor = 1+.055*Math.max(0,dicePriceBasis(state)-4);
+    total+(rank!==null && rank>=to ? 2**(state.dieStars[slot]-1) : 0),0);
+  const rosterFactor = 1+.055*Math.max(0,normalDiceBasis(state)-4);
   const earlyGrowth = 1.14**clamp(advancedBasis-3,0,15);
   const lateGrowth = 1+Math.max(0,advancedBasis-18)/30;
   const progressFactor = (1+.12*advancedBasis)*earlyGrowth*lateGrowth;
@@ -1150,7 +1170,7 @@ function upgradeOffer(item) {
 }
 function renderMaterials() {
   const counts = materials.map(()=>0);
-  for (const rank of state.dieMaterials) counts[rank]++;
+  for (const rank of state.dieMaterials) if (rank!==null) counts[rank]++;
   Array.from(byId("materials").children).forEach((badge,index)=>{
     badge.classList.toggle("current",counts[index]>0);
     const text = counts[index]+"個";
@@ -1158,8 +1178,12 @@ function renderMaterials() {
   });
   const offer = materialOffer();
   const rule = byId("material-rule");
+  if (offer.noNormalDice) {
+    rule.textContent = "材質加工の対象になる通常ダイスがありません。";
+    return;
+  }
   if (offer.capped) {
-    rule.textContent = "全ダイスが最高材質です。";
+    rule.textContent = "すべての通常ダイスが最高材質です。";
     return;
   }
   rule.textContent = offer.locked ?
@@ -1202,7 +1226,8 @@ function renderUI() {
     if (view.row.hidden) continue;
     const offer = upgradeOffer(item);
     const {capped,locked,price} = offer;
-    view.detail.textContent = item.key!=="material" ? item.detail(state) : capped ? "全ダイスが最高材質" :
+    view.detail.textContent = item.key!=="material" ? item.detail(state) : offer.noNormalDice ? "対象の通常ダイスなし" :
+      capped ? "すべての通常ダイスが最高材質" :
       locked ? "材質加工 Lv."+offer.to+"で"+materials[offer.to].name+"を解放" :
       "ダイス #"+(offer.index+1)+" ★"+state.dieStars[offer.index]+" を"+materials[offer.to].name+" ×"+materials[offer.to].multiplier+
       "へ · "+offer.advanced+"/"+state.dice+"個済み";
@@ -1483,8 +1508,9 @@ function restAngles(face) {
 }
 function spawnDie() {
   const slot = dice.length;
-  state.dieMaterials[slot] ??= state.talents.materialStart;
   state.dieSpecials[slot] ??= null;
+  state.dieMaterials[slot] = state.dieSpecials[slot] ? null :
+    (state.dieMaterials[slot] ?? state.talents.materialStart);
   state.dieStars[slot] ??= 1;
   const starts = [[.28,.42],[.65,.33],[.6,.68]];
   const start = state.dice===1 ? [.5,.45] : starts[dice.length];
@@ -2043,18 +2069,27 @@ const pips = [
 // Faces are painted as small, fixed pixel tiles and projected onto the same 3D mesh.
 const faceTileSize = 32;
 const diceFaceTiles = new Map();
-function diceFaceTile(rank,value,lit) {
-  const key = rank*12+(value-1)*2+Number(lit);
+function diceFaceTile(rank,value,lit,special) {
+  const key = (special?.skill ?? rank)+"/"+value+"/"+Number(lit);
   if (diceFaceTiles.has(key)) return diceFaceTiles.get(key);
   const tile = document.createElement("canvas");
   tile.width = tile.height = faceTileSize;
   const g = tile.getContext("2d");
-  const material = materials[rank];
+  const skin = specialSkins.get(special);
+  const material = skin ?? materials[rank];
   const rect = (x,y,w,h,color)=>{g.fillStyle=color;g.fillRect(x,y,w,h);};
   pixelFrame(g,0,0,32,32,3,material.high);
   g.save();
   g.clip();
-  if (rank===0) {
+  if (skin) {
+    rect(2,3,28,26,skin.side);
+    rect(3,4,26,24,skin.high);
+    g.fillStyle=skin.low;
+    g.fill(specialMotifs.get(special));
+    rect(3,3,8,1,skin.glow); rect(21,28,8,1,skin.glow);
+    rect(5,3,3,1,skin.shine); rect(25,28,2,1,skin.shine);
+    rect(3,18,1,3,skin.glow); rect(28,9,1,3,skin.glow);
+  } else if (rank===0) {
     // Open-pore grain stays muted, with long interrupted fibers rather than a specular band.
     for (const [x,y,w] of [[3,5,12],[17,7,11],[3,12,17],[22,15,8],[4,20,12],[13,24,14],[3,27,10]]) {
       rect(x,y,w,1,"#ad805163"); rect(x+3,y+1,w-3,1,"#fff2cf76");
@@ -2077,13 +2112,18 @@ function diceFaceTile(rank,value,lit) {
     pixelPolygon(g,[[11,29],[29,11],[29,18],[19,29]],"#c98228");
     rect(20,6,5,1,"#fffbe0"); rect(22,4,1,5,"#fffbe0");
   }
-  rect(2,2,28,1,rank===2 ? "#f1f7ef" : "#fff4d0");
-  rect(2,3,1,25,rank===0 ? "#f9ebcb" : "#fff2bf");
+  rect(2,2,28,1,skin?.glow ?? (rank===2 ? "#f1f7ef" : "#fff4d0"));
+  rect(2,3,1,25,skin?.low ?? (rank===0 ? "#f9ebcb" : "#fff2bf"));
   rect(29,3,1,26,material.low);
   rect(3,29,26,2,material.side);
   if (!lit) rect(0,0,32,32,rank===0 ? "#60463258" : material.edge+"77");
   for (const [dx,dy] of pips[value]) {
     const x=16+dx*8, y=16+dy*8, r=value===1 ? 4 : 3;
+    if (skin) {
+      pixelFrame(g,x-r-1,y-r-1,r*2+2,r*2+2,2,skin.edge);
+      pixelFrame(g,x-r+1,y-r+1,r*2-2,r*2-2,1,skin.pip);
+      continue;
+    }
     const red = rank===0 && value===1;
     pixelFrame(g,x-r,y-r+1,r*2,r*2,2,lit ? "#fff1bc" : material.low);
     pixelFrame(g,x-r,y-r,r*2,r*2,2,red ? "#913b32" : material.pip);
@@ -2110,7 +2150,6 @@ function projectDie(die,stars = state.dieStars[die.slot]) {
 }
 function drawDie(die,preset = null) {
   const rank = preset?.rank ?? state.dieMaterials[die.slot];
-  const material = materials[rank];
   const special = SPECIAL_DICE[preset ? preset.type : state.dieSpecials[die.slot]];
   const stars = preset?.stars ?? state.dieStars[die.slot];
   const {size,points} = projectDie(die,stars);
@@ -2121,27 +2160,11 @@ function drawDie(die,preset = null) {
     const bright = Math.abs(ux*vy-uy*vx) > size*size*2;
     ctx.save();
     ctx.transform(ux,uy,vx,vy,p.x,p.y);
-    ctx.drawImage(diceFaceTile(rank,value,bright),0,0,1,1);
-    if (special) {
-      // A narrow enamel band leaves the material and all six pip layouts visible.
-      ctx.fillStyle=special.ink;
-      if (special===SPECIAL_DICE.blast) {
-        for (const offset of [.08,.40,.72]) {
-          ctx.beginPath();ctx.moveTo(offset,.07);ctx.lineTo(offset+.18,.07);
-          ctx.lineTo(offset+.09,.18);ctx.closePath();ctx.fill();
-        }
-      } else if (special===SPECIAL_DICE.aura) {
-        ctx.fillRect(.08,.07,.84,.06);
-        ctx.fillRect(.08,.07,.06,.20);ctx.fillRect(.86,.07,.06,.20);
-      } else {
-        ctx.fillRect(.08,.08,.84,.04);
-        ctx.fillRect(.18,.15,.64,.035);
-      }
-    }
+    ctx.drawImage(diceFaceTile(rank,value,bright,special),0,0,1,1);
     ctx.restore();
   }
   // One common seam weight keeps lit and shaded faces joined while the die tumbles.
-  ctx.strokeStyle = "#233346";
+  ctx.strokeStyle = specialSkins.get(special)?.edge ?? "#233346";
   ctx.lineJoin = "bevel";
   ctx.lineWidth = Math.max(1,1.55*unit);
   for (const [,a,b,c,d] of faces) {
@@ -2162,10 +2185,11 @@ function drawDie(die,preset = null) {
     ctx.translate(x,y);
     ctx.scale(radius/12,radius/12);
     rounded(ctx,-13,-13,26,26,5);
-    ctx.fillStyle="#fff2cc"; ctx.fill();
-    ctx.strokeStyle="#374153"; ctx.lineWidth=2; ctx.stroke();
+    const skin = specialSkins.get(special);
+    ctx.fillStyle=skin.side; ctx.fill();
+    ctx.strokeStyle=skin.glow; ctx.lineWidth=2; ctx.stroke();
     ctx.translate(-10,-10); ctx.scale(20/24,20/24);
-    ctx.fillStyle=special.ink;
+    ctx.fillStyle=skin.shine;
     ctx.fill(enamelStamps.get(special));
     ctx.restore();
   }
@@ -2181,6 +2205,25 @@ function drawDie(die,preset = null) {
     ctx.fillStyle = "#ffe5a0";
     ctx.fillText("★"+stars,x,y);
     ctx.restore();
+  }
+}
+function drawSpecialGlow(die) {
+  const skin = specialSkins.get(SPECIAL_DICE[state.dieSpecials[die.slot]]);
+  if (!skin) return;
+  const {x,y} = dieCenter(die);
+  const radius = Math.max(14,24*unit*starStats(die).size);
+  ctx.beginPath();
+  ctx.ellipse(x,y+4*unit,radius*1.23,radius*.90,0,0,Math.PI*2);
+  ctx.fillStyle=skin.glow+"23"; ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(x,y+4*unit,radius,radius*.77,0,0,Math.PI*2);
+  ctx.strokeStyle=skin.glow+"a8"; ctx.lineWidth=Math.max(1,1.7*unit); ctx.stroke();
+  if (reducedMotion.matches) return;
+  for (let i=0;i<3;i++) {
+    const angle=time*(die.rolling ? 4 : 1.4)+die.slot+i*Math.PI*2/3;
+    const px=Math.round(x+Math.cos(angle)*radius*1.27);
+    const py=Math.round(y+Math.sin(angle)*radius*.93);
+    ctx.fillStyle=skin.shine; ctx.fillRect(px,py,2,2);
   }
 }
 function drawArm(arm,index) {
@@ -2434,7 +2477,7 @@ function drawImpactHalo(kind,x,y,progress) {
 }
 function drawRollTrail(die) {
   if (!die.trail?.length || reducedMotion.matches) return;
-  const color = SPECIAL_DICE[state.dieSpecials[die.slot]]?.color ??
+  const color = specialSkins.get(SPECIAL_DICE[state.dieSpecials[die.slot]])?.glow ??
     (state.dieStars[die.slot]>1 ? starStats(die).color : materials[state.dieMaterials[die.slot]].high);
   ctx.save();
   ctx.strokeStyle = color;
@@ -2600,6 +2643,7 @@ function draw() {
   for (const die of dice) {
     if (isFusing(die)) continue;
     drawStarAura(die);
+    drawSpecialGlow(die);
     const lift=die.z/unit, size=(16+lift*.09)*unit*starStats(die).size;
     ctx.beginPath();
     ctx.ellipse(die.x+die.z*.13+3*unit,die.y+die.z*.20+5*unit,size,size*.65,die.rz*.08,0,Math.PI*2);
