@@ -429,3 +429,41 @@ h1,.panel-heading h2,.balance strong,.wordmark,kbd{font-family:var(--shop-type)}
 @media(max-width:780px){#skills{padding:13px 9px 18px}.skill-header h2{font-size:22px}}
 .skills-open .tabs button{flex:1;max-width:190px;min-width:44px}
 .skills-open .tabs button[aria-selected=true],.skills-open .tabs button[aria-selected=true]:hover{background:#344756;color:#fff6df}
+
+/* Arcade cabinet surfaces and native-size interface text. */
+:root{--ink:#222439;--paper:#f3e0b8;--cream:#fff2cf;--line:#ac8d67;--arcade-shadow:#282336;--arcade-key:#783b50}
+body{background:repeating-linear-gradient(0deg,transparent 0 23px,#211f30 23px 25px),repeating-linear-gradient(90deg,#ffffff07 0 2px,transparent 2px 24px),#312a41}
+.masthead{background:#efdab1;border-bottom:4px solid var(--ink);box-shadow:0 4px #90755b}
+.brand-icon,.balance,.sound,.stage,.stage[data-skin],.panel,.tabs button,.buy,.shop-goal,.skill-chart,.skill-inspector,
+.skill-node,.skill-entry,.skill-detail-icon,.skill-detail-offer button,.journal-link,.collection-entry,.milestone-card,
+.skin-choice,dialog,#purchase-receipt{border-radius:2px}
+.brand-icon{transform:none}
+.balance,.sound,.buy,.journal-link,.skin-choice,.skill-detail-offer button{box-shadow:inset 0 2px #fff5ce50,0 3px var(--arcade-shadow)}
+.balance strong,.price,.stage-stats strong,.skill-wallet strong,.skill-detail-offer strong,.records dd,.skill-node-rank{
+  font-family:"Cascadia Mono",Consolas,monospace;letter-spacing:0
+}
+.stage,.stage[data-skin]{border-color:#202439;background:#31344c;box-shadow:inset 0 3px #ffffff16,0 6px #201c2b}
+.stage.fevers-on{border-color:#ddac5f}
+.stage-top,.stage-bottom{background:#3b3e57}
+canvas{border-radius:0;image-rendering:pixelated}
+#roll-button{border-radius:2px;background:#50344b;border-color:#d5a975;box-shadow:inset 0 2px #ffffff21,0 3px #252132}
+.panel{--panel-accent:#71394e;--panel-edge:#ae9372;background:#f3e0b8;box-shadow:inset 0 0 0 2px #fff3d477,0 6px #201c2b}
+.tabs button{background:#e7cda1}
+.tabs button[aria-selected=true],.skills-open .tabs button[aria-selected=true]{background:#53374f}
+.upgrade,.upgrade:has(.buy:not(:disabled)){border-bottom:2px solid #bba17e}
+.upgrade-icon{border-radius:2px;transform:none;image-rendering:pixelated}
+.buy{background:var(--arcade-key);border-color:#422838}
+.buy:disabled{background:#f9e9c6;color:#763d47;border-color:#b38c78;box-shadow:none}
+.skills-open .panel,.skills-open .tabs,.skills-open .panel-footer{background:#f3e0b8}
+.skill-chart,.skill-inspector,.skill-entry,#skill-detail-dialog{background:#fff2d2;border-color:#91775e;border-radius:2px}
+.skill-map{background-color:#ead9b7;background-image:radial-gradient(circle,#7b6a7260 1px,transparent 1.5px);background-size:16px 16px}
+.skill-node[data-state]{border-radius:2px;box-shadow:inset 0 2px #ffffff54,0 3px #77635282}
+.skill-node[data-state="locked"]{background:#e4dccb}
+.skill-node[data-state="ready"]{background:#ffebbd}
+.skill-node[data-state="learned"]{background:#d7e7cf}
+.skill-node[data-state]:hover,.skill-node[aria-pressed=true]{background:#fff5db}
+.skill-detail-icon{background:#e9d5b0}
+#purchase-receipt{background:#392c4b;border:2px solid #edbf74;box-shadow:4px 4px #201b2b}
+@media(prefers-reduced-motion:no-preference){
+  .game button,.game .skill-node{transition-timing-function:steps(3,end)}
+}

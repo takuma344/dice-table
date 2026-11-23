@@ -2,7 +2,12 @@
 
 const byId = id => document.getElementById(id);
 const canvas = byId("table");
-const ctx = canvas.getContext("2d");
+const screenCtx = canvas.getContext("2d");
+// Keep interaction and physics in CSS pixels. Only the artwork uses a low-resolution buffer.
+const pixelScene = document.createElement("canvas");
+const pixelScale = .5;
+const pixelCtx = pixelScene.getContext("2d");
+let ctx = pixelCtx;
 const backdrop = document.createElement("canvas");
 const backdropCtx = backdrop.getContext("2d");
 const materials = [
@@ -451,6 +456,7 @@ function gainFever(charge) {
   if (!state.talents.feverMode || state.feverLeft>0) return;
   state.feverCharge = Math.round((state.feverCharge+charge*(1+milestoneBonus().fever/100))*100)/100;
   if (state.feverCharge<100) return;
+  impactPrint(board.x+board.w/2,board.y+board.h/2,"fever");
   state.feverCharge = 0;
   state.feverLeft = FEVER_DURATION;
   state.feverBurstRolls = 0;
@@ -965,6 +971,10 @@ function purchaseFeedback(element,label,price) {
   if (receipt.parentElement!==host) host.append(receipt);
   receipt.textContent = "✓ "+label+"　−"+format(price)+" コイン";
   receipt.hidden = false;
+  if (!reducedMotion.matches) receipt.animate([
+    {opacity:.3,transform:"translate(-50%, 8px)"},
+    {opacity:1,transform:"translate(-50%, 0)"},
+  ],{duration:160,easing:"steps(4, end)"});
   clearTimeout(receiptTimer);
   receiptTimer = setTimeout(()=>{receipt.hidden=true;},1900);
   if (!reducedMotion.matches) element.animate([
@@ -1417,9 +1427,15 @@ function resize() {
   const pixelHeight = Math.max(1,Math.round(height*resolution));
   if (canvas.width!==pixelWidth) canvas.width = pixelWidth;
   if (canvas.height!==pixelHeight) canvas.height = pixelHeight;
-  if (backdrop.width!==pixelWidth) backdrop.width = pixelWidth;
-  if (backdrop.height!==pixelHeight) backdrop.height = pixelHeight;
-  ctx.setTransform(resolution,0,0,resolution,0,0);
+  const sceneWidth = Math.ceil(width*pixelScale), sceneHeight = Math.ceil(height*pixelScale);
+  for (const layer of [pixelScene,backdrop]) {
+    if (layer.width!==sceneWidth) layer.width = sceneWidth;
+    if (layer.height!==sceneHeight) layer.height = sceneHeight;
+  }
+  pixelCtx.setTransform(pixelScale,0,0,pixelScale,0,0);
+  pixelCtx.imageSmoothingEnabled = false;
+  screenCtx.setTransform(resolution,0,0,resolution,0,0);
+  screenCtx.imageSmoothingEnabled = false;
   const span = Math.min(width,height);
   unit = clamp(span/420,.43,1.6);
   const margin = clamp(span*.012,3,8);
@@ -1563,12 +1579,16 @@ function launch(die, x, y, strength, manual, gesture = null) {
   die.launched = time;
   die.rolling = true;
   die.bounces = 0;
-  if (manual) sound("hit");
+  if (manual) {
+    sound("hit");
+    impactPrint(die.x,die.y,"throw");
+  }
   return true;
 }
 function hardImpact(die) {
   if (!die.hardThrow) return;
   die.hardThrow = false;
+  impactPrint(die.x,die.y,"clash");
   spark(die.x,die.y,["#ffe5a2","#f7bb75"],13);
   sound("impact");
   if (reducedMotion.matches || time-impactTime<.36) return;
@@ -1649,6 +1669,7 @@ function settle(die) {
     requestShake(linked.size,streak);
     chargeFever(linked.size,streak,sameWave);
     sound("crit",streak);
+    impactPrint(die.x,die.y,"resonance");
     spark(die.x,die.y,["#c5ffdd","#fcf2b4","#77f8c7"],7+Math.min(4,linked.size));
   } else {
     spark(die.x,die.y,["#cbb074","#fff1ad"],4);
@@ -1662,6 +1683,7 @@ function settle(die) {
   if (!die.fromBlast && !echo) {
     if (blastFired) {
       addWave(die,"blast");
+      impactPrint(die.x,die.y,"blast");
       spark(die.x,die.y,["#ff9d63","#ffe0a0"],10);
     } else if (star.targets) {
       addWave(die,"star");
@@ -1950,7 +1972,7 @@ function paintTable() {
   const g = backdropCtx;
   const {outer:o,x,y,w,h,depth} = board;
   const skin = skins[state.skin], noise = seededRandom(551);
-  g.setTransform(resolution,0,0,resolution,0,0);
+  g.setTransform(pixelScale,0,0,pixelScale,0,0);
   g.clearRect(0,0,width,height);
   function finish(left,top,wide,tall,r,fill,line=2) {
     rounded(g,left,top,wide,tall,r);
@@ -1969,8 +1991,12 @@ function paintTable() {
     g.lineWidth=.4+noise(); g.stroke();
   }
   g.restore();
-  finish(x,y,w,h,10,gradient(g,x,y,x+w,y+h,[[0,skin.felt[0]],[1,skin.felt[2]]]),3);
+  finish(x,y,w,h,4,skin.felt[1]);
   g.save(); g.clip();
+  g.fillStyle = skin.felt[0];
+  g.fillRect(x,y,w,6);
+  g.fillStyle = skin.felt[2];
+  g.fillRect(x,y+h-8,w,8);
   g.fillStyle = feltPattern;
   g.fillRect(x,y,w,h);
   rounded(g,x+5,y+5,w-10,h-10,6);
@@ -2160,10 +2186,12 @@ function drawWave(wave) {
   const color = wave.kind==="blast" ? "255,153,91" : wave.kind==="arm" ? "145,247,213" :
     wave.kind==="star" ? "200,173,255" : "255,213,137";
   ctx.strokeStyle="rgba("+color+","+(1-t)*.66+")";
+  ctx.setLineDash([6*unit,3*unit]);
   ctx.lineWidth=Math.min(radius*.18,(3.5-2*t)*unit);ctx.stroke();
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius*.8,0,Math.PI*2);
   ctx.strokeStyle="rgba("+color+","+(1-t)*.25+")";
   ctx.lineWidth=Math.min(radius*.08,unit);ctx.stroke();
+  ctx.setLineDash([]);
 }
 function drawBeam(beam) {
   const {a,b,life,phase} = beam;
@@ -2292,44 +2320,47 @@ function drawStarAura(die) {
     diamond(ctx,die.x+Math.cos(angle)*radius,die.y+Math.sin(angle)*radius*.77,2.3*unit,star.color);
   }
 }
-// Cosmetic events use fixed patterns and the animation clock, independent of roll RNG.
+// pixelfx sprite sheets preserve their color and light layers in the exported PNG.
+function effectSheet(name,frameWidth,frameHeight,columns,frames,pivotX,pivotY) {
+  const image = new Image();
+  image.src = "art/pixelfx/"+name+".png";
+  return {image,frameWidth,frameHeight,columns,frames,pivotX,pivotY};
+}
+const hitSheet = effectSheet("hit-spark",136,80,4,16,44,47);
+const pixelEffects = {
+  throw:{sheet:hitSheet,duration:.26,scale:.61},
+  rail:{sheet:hitSheet,duration:.29,scale:.70},
+  clash:{sheet:hitSheet,duration:.32,scale:.82},
+  coins:{sheet:effectSheet("coin-spin",56,56,7,48,28,28),duration:.52,scale:.50},
+  resonance:{sheet:effectSheet("crit-hit",216,136,5,28,84,89),duration:.62,scale:.70},
+  blast:{sheet:effectSheet("plasma-explosion",224,200,7,52,112,100),duration:.80,scale:.88},
+  fever:{sheet:effectSheet("mana-burst",208,150,7,55,104,95),duration:1.05,scale:1.16},
+};
+// Visual effects are paced by the animation clock and never consume roll RNG.
 function impactPrint(x,y,kind) {
   if (reducedMotion.matches) return;
   if (impactPrints.length>=28) impactPrints.shift();
   impactPrints.push({x,y,kind,start:time});
 }
 function drawImpactPrints() {
-  while (impactPrints.length && time-impactPrints[0].start>=.48) impactPrints.shift();
+  for (let i=impactPrints.length-1;i>=0;i--) {
+    const effect = impactPrints[i];
+    if (time-effect.start>=pixelEffects[effect.kind].duration) impactPrints.splice(i,1);
+  }
   if (reducedMotion.matches) return;
   ctx.save();
   for (const effect of impactPrints) {
-    const t = (time-effect.start)/.48;
-    const spread = 1-(1-t)**2;
+    const {sheet,duration,scale} = pixelEffects[effect.kind];
+    if (!sheet.image.naturalWidth) continue;
+    const progress = (time-effect.start)/duration;
+    const frame = Math.min(sheet.frames-1,Math.floor(progress*sheet.frames));
+    const size = unit*scale;
     const coins = effect.kind==="coins";
-    const color = coins ? "#ffd255" : effect.kind==="rail" ? "#ff986d" : "#8df9ee";
-    ctx.globalAlpha = (1-t)*.88;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = (2.8-1.7*t)*unit;
-    const radius = (6+26*spread)*unit;
-    ctx.beginPath();
-    ctx.ellipse(effect.x,effect.y,radius,radius*.53,0,0,Math.PI*2);
-    ctx.stroke();
-    for (let i=0;i<6;i++) {
-      const angle = i*Math.PI/3+effect.start%1;
-      const dx = Math.cos(angle), dy = Math.sin(angle);
-      const x = effect.x+dx*radius;
-      const y = effect.y+dy*radius*.65-(coins ? 16*Math.sin(t*Math.PI)*unit : 0);
-      ctx.beginPath();
-      if (coins) {
-        ctx.ellipse(x,y,(1.1+1.8*Math.abs(Math.cos(i+t*6)))*unit,3.6*unit,angle*.22,0,Math.PI*2);
-        ctx.fillStyle = color; ctx.fill();
-        ctx.lineWidth = unit; ctx.strokeStyle = "#93521d";
-      } else {
-        ctx.moveTo(x,y); ctx.lineTo(x+dx*6*unit,y+dy*5*unit);
-        ctx.strokeStyle = i%2 ? color : "#fff5cf";
-      }
-      ctx.stroke();
-    }
+    const y = effect.y-(coins ? (12+24*progress)*unit : 0);
+    ctx.globalAlpha = coins ? Math.min(1,(1-progress)*4) : 1;
+    ctx.drawImage(sheet.image,frame%sheet.columns*sheet.frameWidth,
+      Math.floor(frame/sheet.columns)*sheet.frameHeight,sheet.frameWidth,sheet.frameHeight,
+      effect.x-sheet.pivotX*size,y-sheet.pivotY*size,sheet.frameWidth*size,sheet.frameHeight*size);
   }
   ctx.restore();
 }
@@ -2542,7 +2573,14 @@ function draw() {
     ctx.globalAlpha=clamp(p.life/p.total,0,1);
     diamond(ctx,p.x,p.y,p.size,p.color);
   }
-  ctx.globalAlpha=1;
+  ctx.restore();
+
+  // Composite with nearest-neighbor sampling, then draw the Japanese result labels at display resolution.
+  screenCtx.clearRect(0,0,width,height);
+  screenCtx.drawImage(pixelScene,0,0,width,height);
+  ctx = screenCtx;
+  ctx.save();
+  ctx.translate(shift.x,shift.y);
   for (const p of popups) {
     if (p.life<=0 || (resonanceResult?.until>time && resonanceResult.partners.includes(p.die))) continue;
     drawPopup(p);
@@ -2552,6 +2590,7 @@ function draw() {
   if (status.textContent!==label) status.textContent = label;
   renderFirstRollHint();
   ctx.restore();
+  ctx = pixelCtx;
 }
 
 function inputPoint(event) {

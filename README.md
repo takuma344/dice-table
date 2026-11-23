@@ -101,6 +101,14 @@ python -m http.server 8000
 
 [GitHub Pagesの公開元を設定する（GitHub Docs）](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 
+## ピクセルアートとエフェクト
+
+テーブル、ダイス、アームは低解像度の Canvas に描き、補間を切って拡大します。配当や共鳴の日本語表示は画面解像度で描きます。フェルトのテクスチャを再利用し、ウィンドウサイズが変わっても粒を描き直しません。
+
+投擲・衝突、着地のコイン、共鳴、爆裂、フィーバーには pixelfx から書き出した透過スプライトシートを使用します。衝撃波は元の範囲に沿ってドットのリングで描き、購入・解放はボタンと購入結果を段階的に光らせます。モーション軽減を有効にすると追加の点滅とスプライト演出を抑えます。
+
+使用素材は `impacts/hit-spark`、`impacts/crit-hit`、`pickups/coin-spin`、`explosions/plasma-explosion`、`arcane/mana-burst` です。後者2種は色を調整して書き出しました。MIT ライセンスは [art/pixelfx/LICENSE.txt](art/pixelfx/LICENSE.txt) にあります。[pixelfx の素材元](https://github.com/patch-gg/pixelfx/tree/5294518ce7c72e48b6100a744596e0acf57f2826)
+
 ## ファイル構成
 
 | ファイル | 役割 |
@@ -108,3 +116,4 @@ python -m http.server 8000
 | `index.html` | テーブル、ショップ・強化・スキルツリー、確認ダイアログ |
 | `style.css` | PC・スマホ向けレイアウトと見た目 |
 | `game.js` | 描画、物理演算、ゲームルール、効果音、セーブ |
+| `art/pixelfx/` | pixelfx から書き出した透過スプライトシート |
