@@ -6,7 +6,7 @@ const ctx = canvas.getContext("2d");
 const backdrop = document.createElement("canvas");
 const backdropCtx = backdrop.getContext("2d");
 const materials = [
-  {name:"木製", multiplier:1, high:"#ffe0a8", low:"#c88c51", side:"#9c5d36", edge:"#5d3322", pip:"#452c22"},
+  {name:"木製", multiplier:1, high:"#f5e6bf", low:"#c9a574", side:"#a78054", edge:"#584536", pip:"#253546"},
   {name:"銅製", multiplier:3, high:"#ffd1ae", low:"#c17556", side:"#a05239", edge:"#60392d", pip:"#542d25"},
   {name:"鉄製", multiplier:9, high:"#edf2f5", low:"#9aaab5", side:"#6f828e", edge:"#445761", pip:"#253840"},
   {name:"金製", multiplier:28, high:"#fff4a1", low:"#e9a838", side:"#b46b1b", edge:"#71461d", pip:"#553016"},
@@ -17,9 +17,9 @@ const SAVE_VERSION = 2;
 const LEGACY_CHIP_VALUE = 250;
 const MATERIAL_PRICES = [85,900,6200];
 const SPECIAL_DICE = {
-  blast:{skill:"specialBlast",name:"爆裂ダイス",mark:"爆",icon:"wave",color:"#ff9d63",cost:800,detail:"出目5・6で周囲に爆裂波を放つ"},
-  aura:{skill:"specialAura",name:"増幅ダイス",mark:"増",icon:"gem",color:"#90eed0",cost:1150,detail:"静止中、近くの他のダイスの配当を25%増やす"},
-  heat:{skill:"specialHeat",name:"熱気ダイス",mark:"熱",icon:"speed",color:"#ffe08a",cost:1000,detail:"出目4〜6でフィーバーゲージを6ポイント加算"},
+  blast:{ink:"#ae4731",stamp:"M12 1 14 7 20 4 18 10 23 12 17 14 19 21 13 17 9 23 8 17 2 18 6 12 1 8 8 8Z",skill:"specialBlast",name:"爆裂ダイス",mark:"爆",icon:"wave",color:"#ff9d63",cost:800,detail:"出目5・6で周囲に爆裂波を放つ"},
+  aura:{ink:"#236c71",stamp:"M3 3H9V13Q9 17 12 17Q15 17 15 13V3H21V14Q21 23 12 23Q3 23 3 14Z",skill:"specialAura",name:"増幅ダイス",mark:"増",icon:"gem",color:"#90eed0",cost:1150,detail:"静止中、近くの他のダイスの配当を25%増やす"},
+  heat:{ink:"#a45517",stamp:"M13 1Q17 9 15 12Q19 10 19 7Q26 19 15 23Q18 18 12 14Q12 18 9 19Q8 21 10 23Q0 20 4 12Q7 15 8 9Q9 4 13 1Z",skill:"specialHeat",name:"熱気ダイス",mark:"熱",icon:"speed",color:"#ffe08a",cost:1000,detail:"出目4〜6でフィーバーゲージを6ポイント加算"},
 };
 const STAR_RANKS = [
   {pay:1,size:1,pulse:0,targets:0,match:0,heat:0,color:"#e5cc96"},
@@ -39,7 +39,7 @@ const MASTERY = [
 ];
 const ALL_MASTERY = (1<<MASTERY.length)-1;
 const skins = [
-  {id:"classic",name:"クラシックグリーン",unlock:0,felt:["#23856a","#126352","#103e3c"],inlay:"#d9c48a",
+  {id:"classic",name:"ブルーマット",unlock:0,felt:["#68879b","#58778c","#4c6b80"],inlay:"#d9c48a",
     rail:["#9d6848","#72462f","#9d6441","#78432e","#563220"],lip:["#5d3727","#613827","#47271e","#2b1915"]},
   {id:"royal",name:"ロイヤルレッド",unlock:10000,felt:["#863a46","#672a37","#421b29"],inlay:"#f2bd76",
     rail:["#a77346","#6b3a2a","#925537","#603123","#41211e"],lip:["#77462b","#683529","#462423","#301819"]},
@@ -121,7 +121,7 @@ const talents = [
     progress:(_,s)=>progressRequirement("テーブル衝撃波 Lv.",s.wave,1),
     detail:()=>"アームの主投擲で衝撃波を1回発生。衝撃波Lv.で範囲が広がる"},
   ...Object.entries(SPECIAL_DICE).map(([type,special])=>({
-    id:special.skill,icon:special.icon,title:special.name,
+    id:special.skill,icon:type,title:special.name,
     costs:SPECIAL_CAP_COSTS[type],...SPECIAL_PATHS[type],
     progress:(n,s)=>progressRequirement("同種のダイス（合成前換算）",specialDiceBasis(s,type),n-1),
     detail:n=>n===1 ? "ショップに追加 · 同時に1個まで" : "同時に "+n+" 個まで",
@@ -163,7 +163,9 @@ const short = value => value < 100000 ? format(value) : compact.format(value);
 const clamp = (value, min, max) => Math.min(max,Math.max(min,value));
 const random = (min,max) => min + Math.random()*(max-min);
 const ease = t => t*t*(3-2*t);
-const icon = name => '<svg aria-hidden="true"><use href="#i-'+name+'"/></svg>';
+const icon = name => SPECIAL_DICE[name] ?
+  '<svg aria-hidden="true" viewBox="0 0 24 24"><path fill="'+SPECIAL_DICE[name].ink+'" stroke="none" d="'+SPECIAL_DICE[name].stamp+'"/></svg>' :
+  '<svg aria-hidden="true"><use href="#i-'+name+'"/></svg>';
 function interval(level) {return Math.max(1.1,4.5*.81**level);}
 function chainRange(rank,speed) {return .13+.025*rank+.01*speed;}
 function waveRange(level) {return .10+.025*(level-1);}
@@ -319,6 +321,9 @@ let time = 0;
 let width = 1, height = 1, resolution = 1, unit = 1;
 let board;
 const impactPrints = [];
+let resonanceResult, firstThrow;
+const firstRollHint = byId("first-roll-hint");
+const touchInput = matchMedia("(pointer: coarse)");
 let dice = [], arms = [], waves = [], beams = [], particles = [], popups = [];
 let popupGrid, feverGlow;
 let recent = Array.from({length:7},()=>[]);
@@ -500,12 +505,26 @@ for (const item of upgrades) {
     label:button.firstElementChild,price:button.lastElementChild,amount:button.lastElementChild.lastElementChild});
   byId(item.shop ? "shop-items" : "upgrades").append(row);
 }
+// Printed specimens use the same enamel stamp as the pieces on the mat.
+function specimen(material, special) {
+  const ink = special?.ink ?? material.pip;
+  const mark = special ? '<path fill="'+ink+'" d="'+special.stamp+'"/>' :
+    '<g fill="'+ink+'"><circle cx="6" cy="6" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="18" cy="18" r="2.5"/></g>';
+  return '<svg class="specimen" aria-hidden="true" viewBox="0 0 44 44">'+
+    '<g stroke="#36414a" stroke-width="1.5" stroke-linejoin="round">'+
+    '<path fill="'+material.low+'" d="M4 10 29 5 40 13 15 19Z"/>'+
+    '<path fill="'+material.side+'" d="M29 5 40 13 39 34 29 38Z"/>'+
+    '<path fill="'+material.high+'" d="M4 10 29 5 29 32 4 38Z"/></g>'+
+    '<g stroke="none" transform="matrix(.76,-.16,0,.8,7,14)">'+mark+'</g>'+
+    '<g fill="'+material.pip+'" stroke="none"><ellipse cx="34" cy="17" rx="1.6" ry="2"/><ellipse cx="35" cy="28" rx="1.6" ry="2"/></g></svg>';
+}
+const enamelStamps = new Map(Object.values(SPECIAL_DICE).map(special=>[special,new Path2D(special.stamp)]));
 const specialViews = new Map();
 for (const [type,special] of Object.entries(SPECIAL_DICE)) {
   const row = document.createElement("article");
   row.className = "upgrade";
   row.style.setProperty("--special-color",special.color);
-  row.innerHTML = '<span class="upgrade-icon special-icon">'+icon(special.icon)+'</span><div><h4 class="upgrade-name">'+
+  row.innerHTML = '<span class="upgrade-icon special-icon">'+specimen(materials[0],special)+'</span><div><h4 class="upgrade-name">'+
     special.name+'</h4><p class="upgrade-detail">'+special.detail+'</p><p class="special-status"></p></div>'+
     '<button class="buy"><span class="buy-label"></span><span class="price">'+icon("coin")+'<span></span></span></button>';
   const button = row.querySelector("button");
@@ -747,7 +766,10 @@ for (const group of COLLECTION_GROUPS) {
   for (const entry of group.entries) {
     const row = document.createElement("div");
     row.className = "collection-entry";
-    row.innerHTML = icon(entry.icon)+"<strong>"+entry.name+"</strong><small></small>";
+    const [family,key] = entry.id.split("-");
+    const drawing = family==="special" ? specimen(materials[0],SPECIAL_DICE[key]) :
+      family==="material" ? specimen(materials[Number(key)]) : icon(entry.icon);
+    row.innerHTML = drawing+"<strong>"+entry.name+"</strong><small></small>";
     section.lastElementChild.append(row);
     collectionViews.set(entry.id,{row,status:row.lastElementChild,entry});
   }
@@ -1139,6 +1161,7 @@ function renderUI() {
   if (!byId("shop").hidden) {
     renderGoal();
     renderSpecials();
+    byId("shop-arm-status").hidden = !state.arms;
   }
   renderMerges();
   if (!byId("skills").hidden) renderSkills();
@@ -1155,6 +1178,16 @@ function renderUI() {
   if (state.talents.material && !byId("enhance").hidden) renderMaterials();
   for (const item of upgrades) {
     const view = upgradeViews.get(item.key);
+    if (item.key==="tree" && state.tree) {
+      view.row.hidden = false;
+      view.detail.textContent = "共鳴・材質加工・自動化など";
+      view.button.disabled = true;
+      view.label.textContent = "解放済み";
+      view.price.hidden = false;
+      view.amount.textContent = format(TREE_PRICE);
+      view.button.setAttribute("aria-label","スキルツリー 解放済み");
+      continue;
+    }
     view.row.hidden = !upgradeAvailable(item);
     if (view.row.hidden) continue;
     const offer = upgradeOffer(item);
@@ -1389,9 +1422,9 @@ function resize() {
   ctx.setTransform(resolution,0,0,resolution,0,0);
   const span = Math.min(width,height);
   unit = clamp(span/420,.43,1.6);
-  const margin = clamp(span*.042,5,19);
-  const rail = clamp(span*.068,7,38);
-  const depth = clamp(span*.045,6,24);
+  const margin = clamp(span*.012,3,8);
+  const rail = clamp(span*.028,7,19);
+  const depth = clamp(span*.014,4,9);
   const horizontal = Math.max(margin,(width-height*2.3)/2);
   const outer = {x:horizontal,y:margin,w:Math.max(1,width-horizontal*2),h:Math.max(1,height-margin*2-depth)};
   board = {outer,rail,depth,x:outer.x+rail,y:outer.y+rail,w:Math.max(1,outer.w-rail*2),h:Math.max(1,outer.h-rail*2)};
@@ -1438,8 +1471,8 @@ function spawnDie() {
   state.dieSpecials[slot] ??= null;
   state.dieStars[slot] ??= 1;
   const starts = [[.28,.42],[.65,.33],[.6,.68]];
-  const start = state.dice===1 ? [.5,.38] : starts[dice.length];
-  const face = start ? [3,5,2][dice.length] : 1+Math.floor(Math.random()*6);
+  const start = state.dice===1 ? [.5,.45] : starts[dice.length];
+  const face = start ? (firstThrow ? 1 : [3,5,2][dice.length]) : 1+Math.floor(Math.random()*6);
   const [rx,ry] = restAngles(face);
   let x = board.x+board.w*(start ? start[0] : random(.13,.87));
   let y = board.y+board.h*(start ? start[1] : random(.13,.87));
@@ -1463,7 +1496,7 @@ function spawnDie() {
       clearance = nearest;
     }
   }
-  const die = {slot,x,y,z:0,vx:0,vy:0,vz:0,rx,ry,rz:start ? [-.34,.25,-.15][dice.length] : random(-Math.PI,Math.PI),
+  const die = {slot,x,y,z:0,vx:0,vy:0,vz:0,rx,ry,rz:start ? [-.17,.25,-.15][dice.length] : random(-Math.PI,Math.PI),
     sx:0,sy:0,sz:0,face,nextFace:face,rolling:false,bounces:0,launched:-Infinity};
   dice.push(die);
   confine(die,false);
@@ -1472,6 +1505,8 @@ function spawnArm() {
   arms.push({next:time+(.48+arms.length*.21)/feverMultiplier(),sweep:null});
 }
 function resetTable() {
+  firstThrow = state.rolls===0 && state.dice===1;
+  resonanceResult = null;
   dice = []; arms = []; waves = []; beams = []; popups = []; particles = [];
   markedDie = null;
   impactPrints.length = 0;
@@ -1655,6 +1690,7 @@ function settle(die) {
   const amount = Math.round((base+bonus)*chain*(1+boost.bonus/100)*
     heatFactor*(burst || multiplier)*(1+rewards.income/100));
   credit(amount);
+  if (linked.size) resonanceResult = {die, partners:[...linked], face:die.face, amount, until:time+1.1};
   if (multiplier===2) {
     state.feverCoins = Math.min(Number.MAX_SAFE_INTEGER,state.feverCoins+amount);
     state.bestFeverCoins = Math.max(state.bestFeverCoins,state.feverCoins);
@@ -1672,7 +1708,8 @@ function settle(die) {
   sound("land");
   sound("coin");
   const life = bonus || burst ? 1.1 : .85;
-  placePopup({x:die.x,y:die.y-14*unit,life,total:life,amount,crit:bonus ? streak : 0,fever:multiplier===2,burst});
+  if (!linked.size || burst) placePopup({x:die.x,y:die.y-14*unit,die,life,total:life,amount,
+    crit:bonus ? streak : 0,fever:multiplier===2,burst});
   awardMilestones();
 }
 function tickDie(die,dt) {
@@ -1892,13 +1929,12 @@ function seededRandom(seed) {
 }
 function createFeltPattern() {
   const tile = document.createElement("canvas");
-  tile.width = tile.height = 192;
+  tile.width = tile.height = 256;
   const brush = tile.getContext("2d");
-  const rand = seededRandom(50783);
-  const fibers = Math.ceil(tile.width*tile.height*.105);
-  for (let i=0;i<fibers;i++) {
-    brush.fillStyle = i%2 ? "rgba(9,34,25,.14)" : "rgba(198,217,164,.13)";
-    brush.fillRect(rand()*tile.width,rand()*tile.height,.3+rand()*1.55,.45+rand()*.9);
+  const noise = seededRandom(551);
+  for (let i=0;i<tile.width*tile.height*.1;i++) {
+    brush.fillStyle = i%2 ? "#eff6ed24" : "#24374a29";
+    brush.fillRect(noise()*tile.width,noise()*tile.height,.5+noise(),.7);
   }
   return backdropCtx.createPattern(tile,"repeat");
 }
@@ -1909,176 +1945,44 @@ function applySkin() {
   document.querySelector(".panel").dataset.skin = skin;
   if (board) paintTable();
 }
-// Pressed into the felt once per backdrop repaint.
-function stampTable(g,cx,cy,r,color) {
-  g.save();
-  g.translate(cx,cy);
-  g.scale(r,r);
-  g.strokeStyle = color;
-  g.fillStyle = color;
-  g.globalAlpha = .32;
-  g.lineWidth = .016;
-  for (let i=0;i<48;i++) {
-    g.beginPath();
-    g.moveTo(0,-.98);
-    g.lineTo(0,i%4 ? -.95 : -.89);
-    g.stroke();
-    g.rotate(Math.PI/24);
-  }
-  // An isometric maker's mark above the table lettering.
-  g.beginPath();
-  g.moveTo(0,-.68); g.lineTo(.24,-.55); g.lineTo(.24,-.30);
-  g.lineTo(0,-.17); g.lineTo(-.24,-.30); g.lineTo(-.24,-.55); g.closePath();
-  g.moveTo(-.24,-.55); g.lineTo(0,-.42); g.lineTo(.24,-.55);
-  g.moveTo(0,-.42); g.lineTo(0,-.17);
-  g.stroke();
-  for (const [x,y] of [[0,-.55],[-.16,-.44],[-.08,-.33],[.08,-.35],[.16,-.45],[.12,-.40]]) {
-    g.beginPath(); g.arc(x,y,.019,0,Math.PI*2); g.fill();
-  }
-  g.restore();
-}
+// Paint the wood and cloth once per resize or skin change.
 function paintTable() {
-  const g = backdropCtx, rand = seededRandom(91273);
-  g.resetTransform();
-  g.clearRect(0,0,backdrop.width,backdrop.height);
+  const g = backdropCtx;
+  const {outer:o,x,y,w,h,depth} = board;
+  const skin = skins[state.skin], noise = seededRandom(551);
   g.setTransform(resolution,0,0,resolution,0,0);
-  const {outer:o,rail,depth,x,y,w,h} = board;
-  const skin = skins[state.skin];
-  const round = rail*1.7;
-  g.save();
-  g.shadowColor = "#050f0bb8";
-  g.shadowBlur = 22*unit;
-  g.shadowOffsetY = 8*unit;
-  rounded(g,o.x,o.y+depth,o.w,o.h,round);
-  g.fillStyle = "#321e18";
-  g.fill();
-  g.restore();
-
-  const lip = gradient(g,0,o.y+o.h-depth,0,o.y+o.h+depth,
-    [[0,skin.lip[0]],[.5,skin.lip[1]],[.72,skin.lip[2]],[1,skin.lip[3]]]);
-  rounded(g,o.x,o.y+depth,o.w,o.h,round);
-  g.fillStyle = lip;
-  g.fill();
-  g.strokeStyle = "#18140f";
-  g.lineWidth = 3.4*unit;
-  g.stroke();
-  rounded(g,o.x,o.y,o.w,o.h,round);
-  g.fillStyle = gradient(g,o.x,o.y,o.x+o.w*.72,o.y+o.h,
-    [[0,skin.rail[0]],[.2,skin.rail[1]],[.45,skin.rail[2]],[.74,skin.rail[3]],[1,skin.rail[4]]]);
-  g.fill();
+  g.clearRect(0,0,width,height);
+  function finish(left,top,wide,tall,r,fill,line=2) {
+    rounded(g,left,top,wide,tall,r);
+    g.fillStyle=fill; g.fill();
+    g.strokeStyle="#233346"; g.lineWidth=line; g.stroke();
+  }
+  finish(o.x,o.y+depth,o.w,o.h,16,"#8a5c40",3);
+  finish(o.x,o.y,o.w,o.h,16,gradient(g,o.x,o.y,o.x,o.y+o.h,[[0,"#e3bc8b"],[1,"#b17d55"]]),3);
   g.save();
   g.clip();
-  for (let i=0;i<235;i++) {
-    const py = o.y+rand()*o.h;
-    const px = o.x-rand()*o.w*.25;
-    const amp = .7+rand()*4;
-    g.beginPath();
-    g.moveTo(px,py);
-    g.bezierCurveTo(px+o.w*.31,py+amp*3,px+o.w*.67,py-amp*2,px+o.w*1.3,py+amp);
-    g.strokeStyle = i%3 ? "rgba(56,25,15,"+(.055+rand()*.16)+")" : "rgba(255,185,116,"+(.04+rand()*.12)+")";
-    g.lineWidth = .45+rand()*1.05;
-    g.stroke();
+  for (let i=0;i<230;i++) {
+    const at=o.y+noise()*o.h;
+    g.beginPath(); g.moveTo(o.x,at);
+    g.bezierCurveTo(o.x+o.w*.3,at-4*noise(),o.x+o.w*.75,at+8*noise(),o.x+o.w,at);
+    g.strokeStyle=i%3 ? "#55402a27" : "#fff1ce53";
+    g.lineWidth=.4+noise(); g.stroke();
   }
   g.restore();
-
-  for (const [inset,color,line] of [[1.3,skin.inlay+"6e",1.5],[rail*.27,"#2b1715b0",1.9],[rail*.34,skin.inlay+"5d",.9],[rail*.78,"#2d1d16",3]]) {
-    rounded(g,o.x+inset,o.y+inset,Math.max(1,o.w-inset*2),Math.max(1,o.h-inset*2),round-inset*.65);
-    g.strokeStyle = color;
-    g.lineWidth = line*unit;
-    g.stroke();
-  }
-
-  const feltRound = rail*.8;
-  rounded(g,x,y,w,h,feltRound);
-  g.fillStyle = "#235841";
-  g.fill();
-  g.save();
-  g.clip();
-  const cx=x+w*.51, cy=y+h*.42;
-  const felt = g.createRadialGradient(cx,cy,0,cx,cy,Math.max(w,h)*.68);
-  felt.addColorStop(0,skin.felt[0]);
-  felt.addColorStop(.58,skin.felt[1]);
-  felt.addColorStop(1,skin.felt[2]);
-  g.fillStyle = felt;
-  g.fillRect(x,y,w,h);
+  finish(x,y,w,h,10,gradient(g,x,y,x+w,y+h,[[0,skin.felt[0]],[1,skin.felt[2]]]),3);
+  g.save(); g.clip();
   g.fillStyle = feltPattern;
   g.fillRect(x,y,w,h);
-  const edge = Math.min(w,h)*.045;
-  rounded(g,x+edge,y+edge,w-edge*2,h-edge*2,rail*.62);
-  g.strokeStyle = skin.inlay+"5a";
-  g.lineWidth = Math.max(.7,unit);
-  g.stroke();
-  const lines = [[1,1],[-1,1],[1,-1],[-1,-1]];
-  for (const [dx,dy] of lines) {
-    const lx = dx>0 ? x+edge*1.6 : x+w-edge*1.6;
-    const ly = dy>0 ? y+edge*1.6 : y+h-edge*1.6;
-    g.beginPath();
-    g.moveTo(lx+dx*edge*1.35,ly);
-    g.lineTo(lx,ly);
-    g.lineTo(lx,ly+dy*edge*1.35);
-    g.strokeStyle = "#c9b67b77";
-    g.stroke();
-    diamond(g,lx+dx*edge*.8,ly+dy*edge*.8,Math.max(1.5,unit*2.4),"#d2c08f88");
-    // Mirrored enamel leaves follow the frame on every table skin.
-    g.save();
-    g.translate(lx,ly);
-    g.scale(dx*edge,dy*edge);
-    for (const enamel of ["#e58b5f","#69cbb5"]) {
-      g.beginPath();
-      g.moveTo(.25,.28);
-      g.quadraticCurveTo(1.18,.18,2.72,.40);
-      g.quadraticCurveTo(1.36,.83,.25,.28);
-      g.fillStyle = enamel; g.fill();
-      g.strokeStyle = skin.inlay; g.lineWidth = .035; g.stroke();
-      g.transform(0,1,1,0,0,0);
-    }
-    g.restore();
-  }
-  const circleR = Math.min(w,h)*.285;
-  for (const [r,color] of [[circleR,"#dcc28e30"],[circleR*.935,"#dcc28e22"]]) {
-    g.beginPath();
-    g.arc(x+w/2,y+h/2,r,0,Math.PI*2);
-    g.strokeStyle = color;
-    g.lineWidth = unit;
-    g.stroke();
-  }
-  for (const [dx,dy] of [[0,1],[0,-1],[-1,0],[1,0]]) {
-    diamond(g,x+w/2+circleR*.975*dx,y+h/2+circleR*.975*dy,3.2*unit,"#d2c08f7c");
-  }
-  stampTable(g,x+w/2,y+h/2,circleR,skin.inlay);
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.fillStyle = skin.inlay+"6e";
-  g.font = "700 "+Math.max(9,Math.min(h*.077,w*.088))+"px Georgia";
-  g.fillText("DICE TABLE",x+w/2,y+h/2,w*.47);
-  g.beginPath();
-  g.moveTo(x+w/2-circleR*.37,y+h/2+circleR*.23);
-  g.lineTo(x+w/2+circleR*.37,y+h/2+circleR*.23);
-  g.strokeStyle = "#dcc28e45";
-  g.stroke();
-  diamond(g,x+w/2,y+h/2+circleR*.35,3.2*unit,"#d2c08f80");
+  rounded(g,x+5,y+5,w-10,h-10,6);
+  g.strokeStyle="#dce5df62"; g.lineWidth=1; g.stroke();
   g.restore();
-
-  rounded(g,x,y,w,h,feltRound);
-  g.strokeStyle = "#162a20";
-  g.lineWidth = 2.7*unit;
-  g.stroke();
-  rounded(g,x+2*unit,y+2*unit,Math.max(1,w-4*unit),Math.max(1,h-4*unit),feltRound);
-  g.strokeStyle = "#122f2588";
-  g.lineWidth = 2*unit;
-  g.stroke();
-
-  for (const at of [.16,.84]) {
-    for (const py of [o.y+rail*.5,o.y+o.h-rail*.5]) {
-      const px = o.x+o.w*at;
-      g.beginPath(); g.arc(px,py,3.1*unit,0,Math.PI*2);
-      g.fillStyle="#35241b";g.fill();
-      g.beginPath(); g.arc(px,py-.5*unit,2.3*unit,0,Math.PI*2);
-      g.fillStyle="#d0a36a";g.fill();
-      g.beginPath();g.moveTo(px-1.2*unit,py);g.lineTo(px+1.2*unit,py-.8*unit);
-      g.strokeStyle="#795132";g.lineWidth=.9*unit;g.stroke();
-    }
-  }
+  g.save();
+  g.translate(x+10,y+h-28); g.rotate(-.16);
+  g.beginPath(); g.moveTo(-12,-8); g.lineTo(27,-8); g.lineTo(25,-1);
+  g.lineTo(28,7); g.lineTo(-12,8); g.lineTo(-10,1); g.closePath();
+  g.fillStyle="#c9b58a"; g.fill();
+  g.strokeStyle="#7e7357"; g.lineWidth=1; g.stroke();
+  g.restore();
 }
 function diamond(g,x,y,r,color) {
   g.beginPath();g.moveTo(x,y-r);g.lineTo(x+r,y);g.lineTo(x,y+r);g.lineTo(x-r,y);g.closePath();
@@ -2112,7 +2016,7 @@ function softFace(points,radius) {
 const paintDepth = die => die.y+die.z*.9;
 const edgeSide = (a,b,p) => (b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x);
 function projectDie(die,stars = state.dieStars[die.slot]) {
-  const size = 14.2*unit*STAR_RANKS[stars-1].size*(1+Math.min(.28,die.z/(340*unit)));
+  const size = 18.2*unit*STAR_RANKS[stars-1].size*(1+Math.min(.28,die.z/(340*unit)));
   const cx = die.x-die.z*.10, cy = die.y-die.z*.51-4.8*unit;
   const ax=Math.cos(die.rx), bx=Math.sin(die.rx);
   const ay=Math.cos(die.ry), by=Math.sin(die.ry);
@@ -2136,31 +2040,21 @@ function drawDie(die,preset = null) {
     if (ux*vy-uy*vx < .7) continue;
     const bright = Math.abs(ux*vy-uy*vx) > size*size*2;
     softFace([p,q,r,s],2.9*unit);
-    const shine = .43+.17*Math.sin(die.rz+die.rx+value);
-    ctx.fillStyle = rank && bright ? gradient(ctx,p.x,p.y,r.x,r.y,
-      [[0,material.low],[shine,material.high],[shine+.18,material.low],[1,material.side]]) :
-      gradient(ctx,0,Math.min(p.y,q.y,r.y,s.y),0,Math.max(p.y,q.y,r.y,s.y),
-        [[0,bright ? material.high : material.low],[1,bright ? material.low : material.side]]);
+    ctx.fillStyle = bright ? material.high : Math.abs(uy)>Math.abs(ux) ? material.side : material.low;
     ctx.fill();
-    ctx.lineWidth = 1.7*unit;
-    ctx.strokeStyle = "#28231f";
+    ctx.lineWidth = 2*unit;
+    ctx.strokeStyle = "#233346";
     ctx.stroke();
-    if (rank===0 && bright) {
-      ctx.save();
-      ctx.clip();
-      ctx.strokeStyle="#864d242a";
-      ctx.lineWidth=.62*unit;
-      for (let i=0;i<4;i++) {
-        const y = p.y+vy*(i+1)/5, x = p.x+vx*(i+1)/5;
-        ctx.beginPath();ctx.moveTo(x,y);
-        ctx.quadraticCurveTo(x+ux*.58+vx*.09,y+uy*.58+vy*.09,x+ux,y+uy);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
     ctx.save();
     ctx.transform(ux,uy,vx,vy,p.x,p.y);
     if (bright) {
+      if (rank===0) {
+        ctx.strokeStyle="#89613830"; ctx.lineWidth=.012;
+        for (let i=1;i<6;i++) {
+          const y=i/7;
+          ctx.beginPath(); ctx.moveTo(.08,y); ctx.quadraticCurveTo(.5,y-.07,.92,y); ctx.stroke();
+        }
+      }
       ctx.strokeStyle = special?.color ?? (stars>1 || rank===3 ? "#fff4bc" : "#fff4d9ae");
       ctx.lineWidth = .026;
       ctx.beginPath();ctx.moveTo(.08,.86);ctx.lineTo(.08,.09);ctx.lineTo(.86,.09);ctx.stroke();
@@ -2173,36 +2067,49 @@ function drawDie(die,preset = null) {
         ctx.stroke();
       }
     }
+    if (special) {
+      // A narrow enamel band leaves the material and all six pip layouts visible.
+      ctx.fillStyle=special.ink;
+      if (special===SPECIAL_DICE.blast) {
+        for (const offset of [.08,.40,.72]) {
+          ctx.beginPath();ctx.moveTo(offset,.07);ctx.lineTo(offset+.18,.07);
+          ctx.lineTo(offset+.09,.18);ctx.closePath();ctx.fill();
+        }
+      } else if (special===SPECIAL_DICE.aura) {
+        ctx.fillRect(.08,.07,.84,.06);
+        ctx.fillRect(.08,.07,.06,.20);ctx.fillRect(.86,.07,.06,.20);
+      } else {
+        ctx.fillRect(.08,.08,.84,.04);
+        ctx.fillRect(.18,.15,.64,.035);
+      }
+    }
     for (const [dx,dy] of pips[value]) {
       const x=.5+dx*.237, y=.5+dy*.237, radius=value===1 ? .105 : .082;
       ctx.beginPath();ctx.arc(x,y+.014,radius,0,Math.PI*2);
       ctx.fillStyle = bright ? "#fff7cf70" : "#ffedb44d";ctx.fill();
       ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);
-      ctx.fillStyle=material.pip;ctx.fill();
+      ctx.fillStyle=rank===0 && value===1 ? "#a6382d" : material.pip;ctx.fill();
     }
     ctx.restore();
   }
   if (special) {
     const x = die.x-die.z*.1+size*.78, y = die.y-die.z*.51-size*.95;
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(x,y,Math.max(7,8.2*unit),0,Math.PI*2);
-    ctx.fillStyle = "#142e28";
-    ctx.fill();
-    ctx.strokeStyle = special.color;
-    ctx.lineWidth = Math.max(1,unit);
-    ctx.stroke();
-    ctx.font = "750 "+Math.max(9,10*unit)+"px 'Segoe UI',sans-serif";
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
-    ctx.fillStyle = special.color;
-    ctx.fillText(special.mark,x,y);
+    const radius=Math.max(6,8*unit);
+    ctx.translate(x,y);
+    ctx.scale(radius/12,radius/12);
+    rounded(ctx,-13,-13,26,26,5);
+    ctx.fillStyle="#fff2cc"; ctx.fill();
+    ctx.strokeStyle="#374153"; ctx.lineWidth=2; ctx.stroke();
+    ctx.translate(-10,-10); ctx.scale(20/24,20/24);
+    ctx.fillStyle=special.ink;
+    ctx.fill(enamelStamps.get(special));
     ctx.restore();
   }
   if (stars>1) {
     const x = die.x-die.z*.1-size*.83, y = die.y-die.z*.51-size*1.04;
     ctx.save();
-    ctx.font = "800 "+Math.max(10,11*unit)+"px 'Segoe UI',sans-serif";
+    ctx.font = "800 "+Math.max(10,11*unit)+"px 'Toy Rounded','BIZ UDPGothic',sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineWidth = 2.4*unit;
@@ -2214,33 +2121,35 @@ function drawDie(die,preset = null) {
   }
 }
 function drawArm(arm,index) {
-  const base = armBase(index);
+  const base = index===0 ? {x:board.x+board.w-31*unit,y:board.y+board.h-47*unit,angle:-2.5} : armBase(index);
   const {x,y,angle} = base;
   const reach = arm.sweep ? clamp(arm.sweep.elapsed/.66,0,1) : 0;
   const extension = arm.sweep ? (reach<.39 ? ease(reach/.39) : 1-ease((reach-.39)/.61)) : 0;
-  const restX = x+Math.cos(angle)*34*unit, restY = y+Math.sin(angle)*34*unit;
+  const restX = x+Math.cos(angle)*(index===0 ? 116 : 34)*unit, restY = y+Math.sin(angle)*(index===0 ? 116 : 34)*unit;
   const tipX = restX+((arm.sweep?.x ?? restX)-restX)*extension;
   const tipY = restY+((arm.sweep?.y ?? restY)-restY)*extension;
   const dir = Math.atan2(tipY-y,tipX-x);
   const bend = (13+Math.sin(reach*Math.PI)*30)*unit;
-  const elbowX=(x+tipX)*.5-Math.sin(dir)*bend, elbowY=(y+tipY)*.5+Math.cos(dir)*bend;
+  const elbowX=index===0 && !arm.sweep ? x-15*unit : (x+tipX)*.5-Math.sin(dir)*bend;
+  const elbowY=index===0 && !arm.sweep ? y-65*unit : (y+tipY)*.5+Math.cos(dir)*bend;
+  rounded(ctx,x-26*unit,y-8*unit,52*unit,27*unit,6*unit);
+  ctx.fillStyle="#899da4"; ctx.fill(); ctx.strokeStyle="#233346"; ctx.lineWidth=3*unit; ctx.stroke();
   ctx.lineJoin="round";ctx.lineCap="round";
-  for (const [thickness,color,offset] of [[14,"#142a23ad",4],[12,"#2b2722",0],[8,"#94704d",0],[3,"#efbc77",-2]]) {
+  for (const [thickness,color,offset] of [[22,"#263d51ad",5],[20,"#233346",0],[15,"#a1b0b4",0],[4,"#d9e0d9",-3]]) {
     ctx.beginPath();ctx.moveTo(x,y+offset*unit);ctx.lineTo(elbowX,elbowY+offset*unit);ctx.lineTo(tipX,tipY+offset*unit);
     ctx.strokeStyle=color;ctx.lineWidth=thickness*unit;ctx.stroke();
   }
   for (const [px,py,r] of [[x,y,12],[elbowX,elbowY,6],[tipX,tipY,5]]) {
     ctx.beginPath();ctx.arc(px,py,r*unit,0,Math.PI*2);
-    ctx.fillStyle="#29352c";ctx.fill();ctx.strokeStyle="#bb9863";ctx.lineWidth=1.5*unit;ctx.stroke();
-    ctx.beginPath();ctx.arc(px,py,r*.31*unit,0,Math.PI*2);
-    ctx.fillStyle=arm.sweep ? "#afffce" : "#dfbb74";ctx.fill();
+    ctx.fillStyle="#9eafb4";ctx.fill();ctx.strokeStyle="#233346";ctx.lineWidth=1.5*unit;ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px-r*.58*unit,py+r*.26*unit); ctx.lineTo(px+r*.58*unit,py-r*.26*unit); ctx.stroke();
   }
   ctx.save();
   ctx.translate(tipX,tipY);
   ctx.rotate(Math.atan2(tipY-elbowY,tipX-elbowX));
   ctx.beginPath();ctx.moveTo(2*unit,-2*unit);ctx.lineTo(9*unit,-5*unit);ctx.lineTo(13*unit,-3*unit);
   ctx.moveTo(2*unit,2*unit);ctx.lineTo(9*unit,5*unit);ctx.lineTo(13*unit,3*unit);
-  ctx.strokeStyle=arm.sweep ? "#c9ffdd" : "#e9bd7e";ctx.lineWidth=2*unit;ctx.stroke();
+  ctx.strokeStyle=arm.sweep ? "#e5e9d7" : "#bfcbd0";ctx.lineWidth=2*unit;ctx.stroke();
   ctx.restore();
 }
 function drawWave(wave) {
@@ -2328,7 +2237,7 @@ function drawPopup(popup) {
   ctx.textBaseline="middle";
   ctx.lineWidth=Math.min(3*unit,popupGrid.h*.05);
   ctx.strokeStyle="#17322a";
-  ctx.font="800 "+amountSize+"px 'Segoe UI',sans-serif";
+  ctx.font="800 "+amountSize+"px 'Toy Rounded','BIZ UDPGothic',sans-serif";
   const label="＋"+short(popup.amount);
   const badgeWidth = Math.min(maxWidth,ctx.measureText(label).width+14*unit);
   rounded(ctx,x-badgeWidth/2,y-amountSize*.65,badgeWidth,amountSize*1.32,amountSize*.48);
@@ -2345,7 +2254,7 @@ function drawPopup(popup) {
     const combo=popup.burst ? "バースト ×"+popup.burst+(popup.crit ? " · 共鳴 ×"+popup.crit : "") :
       "共鳴クリティカル"+(popup.crit>1 ? " ×"+popup.crit : "");
     const comboY = y+(amountSize+comboSize)*.64;
-    ctx.font="750 "+comboSize+"px 'Segoe UI',sans-serif";
+    ctx.font="750 "+comboSize+"px 'Toy Rounded','BIZ UDPGothic',sans-serif";
     ctx.strokeText(combo,x,comboY,maxWidth);
     ctx.fillText(combo,x,comboY,maxWidth);
   }
@@ -2480,6 +2389,79 @@ function drawFusion(fusion) {
   ctx.stroke();
   ctx.restore();
 }
+function dieCenter(die) {
+  return {x:die.x-die.z*.1,y:die.y-die.z*.51-4.8*unit};
+}
+function renderFirstRollHint() {
+  const die = dice[0];
+  const visible = firstThrow && dice.length===1 && !die.rolling;
+  firstRollHint.hidden = !visible;
+  if (!visible) return;
+  const center = dieCenter(die);
+  const bottom = Math.max(center.y+24,...projectDie(die).points.map(point=>point.y));
+  const label = touchInput.matches ? "ダイスをタップして振る" : "このダイスをクリック";
+  if (firstRollHint.textContent!==label) firstRollHint.textContent = label;
+  firstRollHint.style.left = center.x+"px";
+  firstRollHint.style.top = (bottom+12)+"px";
+}
+function drawResonance(showResult) {
+  const event = resonanceResult;
+  if (!event || time>=event.until || !dice.includes(event.die)) return;
+  const partners = event.partners.filter(die=>dice.includes(die) && !die.rolling && die.face===event.face);
+  if (!partners.length || event.die.rolling || event.die.face!==event.face) return;
+  const center = dieCenter(event.die);
+  const points = partners.map(dieCenter);
+  ctx.save();
+  if (!showResult) {
+    ctx.strokeStyle="#ffe3a1";
+    ctx.lineWidth=2*unit;
+    for (const point of points) {
+      ctx.beginPath(); ctx.moveTo(center.x,center.y); ctx.lineTo(point.x,point.y); ctx.stroke();
+    }
+  } else {
+    for (const die of [event.die,...partners]) {
+      const {points:corners} = projectDie(die);
+      const left=Math.min(...corners.map(p=>p.x)), top=Math.min(...corners.map(p=>p.y));
+      const right=Math.max(...corners.map(p=>p.x)), bottom=Math.max(...corners.map(p=>p.y));
+      rounded(ctx,left-3,top-3,right-left+6,bottom-top+6,6);
+      ctx.strokeStyle="#ffe3a1"; ctx.lineWidth=1.5; ctx.stroke();
+    }
+    const label=event.face+"がそろった　＋"+format(event.amount)+"コイン";
+    ctx.font="bold 14px 'Toy Rounded','BIZ UDPGothic',sans-serif";
+    const labelW=Math.min(board.w-8,ctx.measureText(label).width+20), labelH=29;
+    const midX=(center.x+points.reduce((sum,p)=>sum+p.x,0))/(points.length+1);
+    const midY=(center.y+points.reduce((sum,p)=>sum+p.y,0))/(points.length+1);
+    const x=clamp(midX,board.x+labelW/2+4,board.x+board.w-labelW/2-4);
+    const preferred=midY-31*unit-labelH/2;
+    const bounds=dice.map(die=>{
+      const {points:corners}=projectDie(die);
+      return {left:Math.min(...corners.map(p=>p.x))-5,right:Math.max(...corners.map(p=>p.x))+5,
+        top:Math.min(...corners.map(p=>p.y))-5,bottom:Math.max(...corners.map(p=>p.y))+5};
+    });
+    let position, distance=Infinity;
+    for (let y=board.y+labelH/2+4;y<=board.y+board.h-labelH/2-4;y+=5) {
+      for (const offset of [0,-24,24,-48,48]) {
+        const cx=clamp(x+offset,board.x+labelW/2+4,board.x+board.w-labelW/2-4);
+        if (bounds.some(b=>cx+labelW/2>b.left && cx-labelW/2<b.right &&
+          y+labelH/2>b.top && y-labelH/2<b.bottom)) continue;
+        const cost=Math.abs(y-preferred)+Math.abs(cx-x)*1.3;
+        if (cost<distance) {distance=cost;position={x:cx,y};}
+      }
+    }
+    // A full board can have no free space for the result. Use the stage header there.
+    if (!position) {
+      ctx.restore();
+      return label;
+    } else {
+      rounded(ctx,position.x-labelW/2,position.y-labelH/2,labelW,labelH,6);
+      ctx.fillStyle="#f8e8b9"; ctx.fill();
+      ctx.strokeStyle="#283749"; ctx.lineWidth=2; ctx.stroke();
+      ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillStyle="#613923"; ctx.fillText(label,position.x,position.y,labelW-12);
+    }
+  }
+  ctx.restore();
+}
 function draw() {
   ctx.clearRect(0,0,width,height);
   ctx.save();
@@ -2524,8 +2506,14 @@ function draw() {
     ctx.fill();
   }
   ctx.restore();
-  for (const beam of beams) if (beam.life>0) drawBeam(beam);
+  for (const beam of beams) if (beam.arm && beam.life>0) drawBeam(beam);
+  drawResonance(false);
   arms.forEach(drawArm);
+  if (firstThrow && dice.length===1 && !dice[0].rolling) {
+    const center = dieCenter(dice[0]);
+    ctx.beginPath(); ctx.arc(center.x,center.y,Math.max(25,32*unit),0,Math.PI*2);
+    ctx.strokeStyle="#f2dfaa95"; ctx.lineWidth=1.3; ctx.stroke();
+  }
   const ordered = [...dice].sort((a,b)=>paintDepth(a)-paintDepth(b));
   for (const die of ordered) {
     if (isFusing(die) && !reducedMotion.matches) continue;
@@ -2545,7 +2533,7 @@ function draw() {
     ctx.stroke();
     ctx.fillStyle = "#ffe19b";
     ctx.textAlign = "center";
-    ctx.font = "700 "+Math.max(10,12*unit)+"px 'Segoe UI',sans-serif";
+    ctx.font = "700 "+Math.max(10,12*unit)+"px 'Toy Rounded','BIZ UDPGothic',sans-serif";
     ctx.fillText("#"+(die.slot+1),die.x-die.z*.10,y-26*unit);
     ctx.restore();
   }
@@ -2555,7 +2543,14 @@ function draw() {
     diamond(ctx,p.x,p.y,p.size,p.color);
   }
   ctx.globalAlpha=1;
-  for (const p of popups) if (p.life>0) drawPopup(p);
+  for (const p of popups) {
+    if (p.life<=0 || (resonanceResult?.until>time && resonanceResult.partners.includes(p.die))) continue;
+    drawPopup(p);
+  }
+  const label = drawResonance(true) ?? "";
+  const status = byId("resonance-status");
+  if (status.textContent!==label) status.textContent = label;
+  renderFirstRollHint();
   ctx.restore();
 }
 
@@ -2592,12 +2587,18 @@ function findDie(from,to) {
       }
     }
   }
+  if (!target && firstThrow && dice.length===1) {
+    const {x,y} = dieCenter(dice[0]);
+    if (faceEntry([{x:x-24,y:y-24},{x:x+24,y:y-24},{x:x+24,y:y+24},{x:x-24,y:y+24}],from,to)<Infinity) return dice[0];
+  }
   return target;
 }
 function manualRoll(die,x,y,power = 1,angle) {
   const strength = Math.min(2.22,(1+.062*state.wave)*power);
   const hard = power>=1.40;
   if (!launch(die,x,y,strength,true,{angle,hard})) return false;
+  firstThrow = false;
+  firstRollHint.hidden = true;
   if (state.wave) addWave(die);
   if (hard) spark(die.x,die.y,["#ffe3a1","#fff6d3"],8);
   return true;
@@ -2616,6 +2617,11 @@ function keyboardRoll() {
   }
   if (nearest) manualRoll(nearest,x,y);
 }
+byId("roll-button").addEventListener("click",()=>{
+  unlockAudio();
+  keyboardRoll();
+});
+
 function aimPower(gesture,now) {
   const span = Math.min(board.w,board.h);
   const dx = gesture.last.x-gesture.start.x, dy = gesture.last.y-gesture.start.y;

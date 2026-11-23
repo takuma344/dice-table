@@ -264,143 +264,6 @@ dialog p{margin:10px 0 20px;font-size:13px}
 dialog form div{display:flex;justify-content:flex-end;gap:8px}
 dialog button{min-height:44px;padding:0 10px;border-radius:6px;border:1px solid #cbbb9f;background:var(--paper);color:var(--ink);font-size:12px}
 dialog .danger{background:#814332;color:white;border-color:#814332}
-/* Lacquered cabinet, felt and brass hardware. */
-:root{--rim:#211d17;--brass:#cc9d5e;--ivory:#fff2d4}
-.masthead{
-  border-bottom:3px solid var(--rim);
-  background:linear-gradient(102deg,#293b31,#132820 66%);
-  box-shadow:inset 0 -1px #a88a55;
-}
-.brand-icon,.sound{
-  border:2px solid var(--rim);border-radius:9px;
-  box-shadow:inset 0 1px #fff4,0 3px var(--rim);
-}
-.brand-icon{color:#432e1c;background:linear-gradient(135deg,#ffe6a4,#c08b4a)}
-.brand-icon svg{stroke-width:2.3}
-.balance-icon{
-  border:2px solid #392916;border-radius:50%;color:#634019;
-  background:linear-gradient(145deg,#fff0ac,#e7b258 65%,#bb7938);
-  box-shadow:inset 0 0 0 2px #ffdd8a,0 3px #6a482b,0 5px #111c15;
-}
-.balance strong,.stage-stats strong{text-shadow:0 2px #111c16}
-.stage-bottom{padding:7px 0 0;border-top:1px solid #c5aa703d}
-.panel{
-  border-inline-start:4px solid var(--rim);
-  background:repeating-linear-gradient(0deg,transparent 0 24px,#7356320a 24px 25px),linear-gradient(120deg,var(--panel-surface),#e8dabc);
-  box-shadow:inset 3px 0 #bb9b6a;
-}
-.tabs,.skills-open .tabs{
-  align-items:center;gap:4px;padding:7px 9px;
-  background:linear-gradient(#384237,#232b23);border-bottom:3px solid var(--rim);
-  box-shadow:inset 0 1px #bda57a77;
-}
-.tabs button,.skills-open .tabs button{
-  justify-content:center;min-height:44px;border:2px solid transparent;border-radius:6px;
-  padding:3px 5px;color:#f1e5cc;font-size:12px;line-height:1.15;
-}
-.tabs button:nth-child(-n+3){flex-direction:column;gap:3px;flex:1 0 auto}
-.tabs button svg{width:17px;height:17px;color:#dcb87c}
-.tabs button:nth-child(n+4){font-size:11px}
-.tabs button:hover,.skills-open .tabs button:hover{color:white;background:#445347}
-.tabs button[aria-selected=true],.skills-open .tabs button[aria-selected=true]{
-  background:linear-gradient(#ffe7aa,#d9aa65);border-color:var(--rim);color:#32291c;
-  box-shadow:inset 0 1px #ffefca,0 2px var(--rim);
-}
-.tabs button[aria-selected=true] svg{color:#674722}
-.tabs button:focus-visible{outline-color:#ffe3a3;outline-offset:0}
-#enhance-tab{position:relative}
-#enhance-tab .merge-count{position:absolute;top:1px;right:0}
-.panel-heading h2,.skill-header h2{font-family:"Yu Mincho","Hiragino Mincho ProN",serif;font-weight:900}
-.panel-heading{border-bottom:3px double #927951}
-.shop-goal{margin-top:13px;padding:9px 12px;border-inline-start:3px solid #90703d;background:#fff8e6ae}
-.shop-goal progress{height:8px}
-.upgrades{gap:12px}
-.upgrade,.upgrade:has(.buy:not(:disabled)){
-  border:2px solid #534630;border-radius:8px;padding:12px;
-  background:linear-gradient(115deg,#fffae9,var(--panel-surface));
-  box-shadow:inset 0 1px #fff,0 3px #79654a;
-}
-.upgrade-icon{
-  border:2px solid #514432;color:#4d3722;border-radius:7px;
-  background:linear-gradient(135deg,#ffe4a8,#c8955f);box-shadow:inset 0 1px #fff8,0 2px #71593d;
-}
-.upgrade[data-kind=tree] .upgrade-icon{color:#244d46;background:linear-gradient(145deg,#cae9ce,#88b7a2)}
-.upgrade-name{font-weight:800}
-.upgrade-detail{line-height:1.45}
-.buy,.skill-entry button,.skill-detail-offer button:not(:disabled){
-  border:2px solid var(--rim);box-shadow:inset 0 1px #fff5,0 3px var(--rim);
-}
-.buy:disabled{background:#e9e2d2;border:1px solid #bbae94;color:#625744;box-shadow:inset 0 1px 2px #68533019}
-.panel-footer{background:#eee3ce;border-top:3px double #b9a786}
-.skills-open .tabs button:nth-child(-n+3){flex:0 0 auto;min-width:85px}
-.skill-entry,.skill-chart,.skill-inspector{
-  border:2px solid #77664a;box-shadow:inset 0 1px #d7be8129,0 4px #0b1511;
-}
-.skill-node{border-width:2px;box-shadow:0 3px #080e0b,inset 0 1px #ffffff1c}
-.skill-node[data-state=ready]{background:linear-gradient(#493a24,#312b20)}
-.skill-node[data-state=learned]{background:linear-gradient(#304c3c,#1e342b)}
-#purchase-receipt,.notice{border:2px solid #b39259;box-shadow:0 3px #182119}
-.game .buy:not(:disabled):active,.game .sound:active,.skill-detail-offer button:not(:disabled):active{
-  transform:translateY(2px);box-shadow:inset 0 1px 2px #131a1640;
-}
-@media(hover:hover){
-  .upgrade:has(.buy:not(:disabled):hover){background:#fff9df;border-color:var(--panel-accent)}
-}
-@media(min-width:781px) and (pointer:fine){
-  .game{grid-template-columns:minmax(0,1fr) clamp(340px,35vw,525px)}
-}
-/* Enamel colors tie each cabinet tab to its cards and controls. */
-#shop-tab,#shop{--enamel:#873c31;--glaze:#bc5842;--foil:#ffcd86}
-#enhance-tab,#enhance{--enamel:#0d605a;--glaze:#24877a;--foil:#a4f0d6}
-#skills-tab,#skills{--enamel:#2e4b79;--glaze:#486e9d;--foil:#bdddff}
-.tabs button:nth-child(-n+3) svg{color:var(--foil)}
-.tabs button:nth-child(-n+3)[aria-selected=true]{
-  color:#fff9e9;background:linear-gradient(145deg,var(--glaze),var(--enamel));
-  box-shadow:inset 0 1px var(--foil),inset 0 -2px #17191c44,0 2px #111b18;
-}
-.tabs button:nth-child(-n+3)[aria-selected=true] svg{color:var(--foil)}
-.masthead{background:linear-gradient(110deg,#164a47,#17342f 52%,#1b2b38);border-bottom-color:#a57a41}
-.brand-icon{background:linear-gradient(135deg,#ffe6a4,#eead51 62%,#bd7434)}
-.balance-icon{background:linear-gradient(135deg,#fff8ae,#ffca4c 47%,#e39b33 77%,#bf7130);color:#794414}
-.stage[data-skin=classic]{background:radial-gradient(ellipse at 40% 36%,#225e4f,#143e36 56%,#122b2b)}
-.stage-stats strong{color:#b8f4de}
-.panel-heading h2{color:var(--enamel,var(--ink))}
-:is(#shop,#enhance) .panel-heading h2{
-  display:flex;align-items:center;gap:10px;padding:8px 13px;color:#fff3da;
-  background:linear-gradient(105deg,var(--enamel) 40%,var(--glaze));
-  border:2px solid #48392c;border-radius:6px;
-  box-shadow:inset 0 1px var(--foil),inset 0 -2px #39232044,0 2px #b69b70;
-}
-:is(#shop,#enhance) .panel-heading h2::after{
-  content:"";width:8px;height:8px;margin-left:auto;transform:rotate(45deg);
-  background:var(--foil);border:1px solid #fff8;box-shadow:-4px 4px 0 -2px var(--enamel);
-}
-.shop-goal{border:1px solid #c69157;border-inline-start:4px solid #b4553b;border-radius:5px;
-  background:linear-gradient(115deg,#fff1c9,#fff9e9);box-shadow:inset 0 1px #fff}
-.shop-goal progress{appearance:none;border:0;border-radius:6px;overflow:hidden;background:#dbccb0}
-.shop-goal progress::-webkit-progress-bar{background:#dbccb0}
-.shop-goal progress::-webkit-progress-value{background:linear-gradient(90deg,#bd5942,#eba640)}
-.shop-goal progress::-moz-progress-bar{background:#be623c}
-.upgrade,.upgrade:has(.buy:not(:disabled)){
-  background:linear-gradient(112deg,#fffdf3 30%,#fff4db);border-color:#71604b;
-  box-shadow:inset 3px 0 var(--glaze,#b58a53),inset 0 2px #fff,0 3px #715e47,0 5px 9px #553d2120;
-}
-.upgrade:has(.buy:not(:disabled)){border-color:var(--enamel,#675030)}
-.upgrade-icon{background:linear-gradient(142deg,#ffdf9e,#e19958);color:#693b21}
-.upgrade[data-kind=tree] .upgrade-icon{background:linear-gradient(145deg,#c5eaff,#7fa8d9);color:#29476c}
-#enhance .upgrade-icon:not(.merge-icon){background:linear-gradient(135deg,#c9f4dc,#78c3ad);color:#185c50}
-.upgrade .buy:not(:disabled){
-  background:linear-gradient(155deg,var(--glaze,#42795a),var(--enamel,#28604b));
-  box-shadow:inset 0 1px var(--foil,#f4e5be),0 3px #332c22;
-}
-.price svg{color:#ffdf81}
-.skill-chart-bar,.skills-open .panel-footer{background:#182f3a}
-.skill-map{background:radial-gradient(circle,#94c4c33d 1px,transparent 1.4px) 0 0/16px 16px,radial-gradient(ellipse at 50% 0%,#214343,#15232d 76%)}
-.skill-node[data-state=ready]{box-shadow:inset 0 2px #ffdf8d70,0 3px #131512,0 0 12px #e5ab382c}
-.skill-node[data-state=learned]{background:linear-gradient(#245747,#183c36)}
-.skill-node-icon{filter:drop-shadow(0 1px 2px #0008)}
-.skill-wallet{border:1px solid #998056;border-radius:7px;background:#2b322e;padding:5px 9px}
-#purchase-receipt{background:linear-gradient(115deg,#164e46,#243934);border-color:#e5bc6a;color:#fff1c5}
 @media(max-width:780px),(pointer:coarse){
   .game{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,3fr) minmax(0,2fr)}
   .masthead{padding:6px 14px}
@@ -444,3 +307,125 @@ dialog .danger{background:#814332;color:white;border-color:#814332}
   .balance strong{font-size:25px}
   .panel{border-top:0}
 }
+/* Toy shop counter */
+:root{--ink:#243346;--paper:#f6ebd2;--cream:#fff5dc;--muted:#655643;--line:#ae9d81}
+body{background:repeating-linear-gradient(0deg,#352d29 0 1px,transparent 1px 29px),linear-gradient(115deg,#5a4d40,#3e3733)}
+.game{height:100dvh;min-height:480px;grid-template-columns:minmax(0,1fr) clamp(302px,32vw,460px);grid-template-rows:86px minmax(0,1fr);gap:24px 18px;padding:0 24px 24px}
+.masthead{margin-inline:-24px;padding:0 27px 0 30px;background:#f2e5ca;border-bottom:3px solid var(--ink);box-shadow:0 4px #221e1b;color:var(--ink)}
+.brand-icon{width:39px;height:39px;transform:rotate(-8deg);border:2px solid var(--ink);border-radius:8px;box-shadow:0 3px #927050,inset 0 2px #fff8;background:#ead6ac;color:#a0392f}
+.brand-icon svg{display:none}
+.brand-icon::after{content:"";width:12px;height:12px;background:#a8392c;border:1px solid #722e26;border-radius:50%}
+h1,.panel-heading h2{font-family:"Yu Mincho","Hiragino Mincho ProN",serif;font-weight:900}
+h1{font-size:clamp(21px,3.05vw,29px);letter-spacing:.025em;color:var(--ink)}
+.header-tools{gap:9px}
+.balance{gap:10px;padding:5px 12px;background:#e8d7b7;border:2px solid #493e35;border-radius:7px;min-width:120px;box-shadow:inset 0 2px #f9efdb}
+.balance-icon{width:30px;height:30px;border-radius:50%;color:#6b4829;background:#dfb26d;border:2px solid #5c4632;box-shadow:inset 0 0 0 2px #f6d893}
+.balance-icon svg{width:20px;height:20px}
+.balance .metric-label{color:var(--ink);letter-spacing:0}
+.balance strong{color:var(--ink);font:800 25px/1 "Yu Gothic UI",sans-serif}
+.save-status{color:#47594a}.save-status i{background:#426345}
+.sound{background:#ead9b8;color:var(--ink);border:1px solid #80705d}
+.stage,.stage[data-skin]{padding:0;gap:0;background:#344756;color:#f9edd5;border:2px solid #202c39;border-radius:12px;box-shadow:0 5px #26272c;overflow:hidden;grid-template-rows:50px minmax(0,1fr) 62px}
+.stage.fever-unlocked{grid-template-rows:50px auto minmax(0,1fr) 62px}
+.stage-top{padding:0 16px;border-bottom:1px solid #87929a66;gap:8px;font-size:14px}
+.stage-stats{gap:9px}
+.stage-stats>div{display:flex;gap:4px;align-items:baseline;padding-left:9px;border-color:#88949a}
+.stage-stats>div:first-child{border:0}
+.stage-stats strong,.stage-stats small,.stage-stats .metric-label{color:#f9edd5;font-size:12px;margin:0;letter-spacing:0}
+.fever-meter{padding:5px 14px}
+.playfield{margin:5px 9px 10px}
+.stage-bottom{padding:0 16px;border-top:1px solid #87929a66;font-size:12px}
+#roll-button{min-height:44px;background:transparent;color:#fff1d8;border:1px solid #9ca9b1;border-radius:4px;padding:4px 8px}
+#roll-button:hover{background:#4a5e6d}
+#resonance-status{color:#ffe0a0;font-size:12px;text-align:center}
+.first-roll-hint{position:absolute;z-index:1;transform:translateX(-50%);white-space:nowrap;pointer-events:none;background:#f9edcf;color:#243346;border:2px solid #243346;border-radius:6px;box-shadow:0 3px #24334677;padding:8px 14px;font-weight:800;font-size:14px}
+.first-roll-hint::before{content:"";position:absolute;width:10px;height:10px;background:inherit;border-top:2px solid #243346;border-left:2px solid #243346;left:calc(50% - 5px);top:-7px;rotate:45deg}
+.panel{--panel-accent:#91392e;--panel-edge:#b09e80;--panel-surface:#f6ebd2;background:#f6ebd2;border:2px solid var(--ink);border-radius:10px;box-shadow:0 5px #211e1c}
+.tabs{gap:3px;background:#e8d5b1;padding:7px 6px 0;border-bottom:2px solid var(--ink)}
+.tabs button{justify-content:center;min-height:44px;padding:0 4px;border:1px solid #907d68;border-bottom:0;border-radius:5px 5px 0 0;background:#eddfc1;font-size:11px}
+.tabs button:nth-child(-n+3){flex:1}
+.tabs button svg{display:none}
+.tabs button[aria-selected=true],.skills-open .tabs button[aria-selected=true]{color:#fff3da;background:#344756;border-color:#243346}
+.panel-content{padding:15px 13px}
+#shop .panel-heading{display:flex;align-items:center;justify-content:space-between;gap:5px;margin:0;padding-bottom:12px;border-bottom:2px solid #776b57}
+#shop .panel-heading h2{font-size:22px}
+#shop .panel-heading>span{color:#635742;font-size:11px;white-space:nowrap}
+.upgrades{gap:0}
+.upgrade,.upgrade:has(.buy:not(:disabled)){min-height:82px;gap:8px;padding:10px 1px;border:0;border-bottom:1px solid #a9987b;border-radius:0;background:none;box-shadow:none}
+.upgrade-icon{width:34px;height:34px;background:#ead6ac;color:#743e28;border:2px solid #243346;box-shadow:0 2px #a87c55;transform:rotate(-7deg)}
+.upgrade[data-kind=tree] .upgrade-icon{transform:none;background:#e4c797}
+.upgrade-detail{font-size:11px}
+.buy{min-width:57px;border-radius:4px;gap:4px;flex-direction:column-reverse;background:#a0392f;border:1px solid #742b27;color:#fff3d6;box-shadow:0 2px #6e3d32}
+.buy:disabled{background:#fff3da;border:1px solid #aa6a57;color:#8b3428;box-shadow:none}
+.buy .price svg{display:none}
+.buy .price{font-size:15px}
+.shop-goal{margin-top:19px;padding:9px 10px;background:#ecddbc;border:1px solid #a69476;border-left:3px solid #7c6852;color:#44392f}
+.panel-footer{background:#ebdfc4;color:#5f5141}
+.skills-open .panel{grid-column:1/-1;grid-row:2;min-width:0}
+@media(max-width:780px){
+  .game{height:auto;min-height:100dvh;overflow:visible;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;gap:14px;padding:0 16px 16px}
+  .masthead{margin-inline:-16px;padding:10px 16px;min-height:68px}
+  .brand{gap:7px}.brand-icon{width:27px;height:27px}.brand-icon::after{width:8px;height:8px}
+  h1{font-size:clamp(15px,4.4vw,23px);letter-spacing:0}
+  .balance{min-width:0;padding:5px 7px;gap:5px}.balance-icon{width:21px;height:21px}.balance-icon svg{width:15px;height:15px}
+  .balance strong{font-size:19px}.save-status{display:none}.sound{width:34px;min-height:44px}
+  .stage,.stage[data-skin]{grid-template-rows:38px minmax(0,1fr) 49px}
+  .stage.fever-unlocked{grid-template-rows:38px auto minmax(0,1fr) 49px}
+  .playfield{height:clamp(235px,78vw,410px);margin:4px 6px 6px}
+  .stage-bottom{padding-inline:10px;font-size:11px}#roll-button kbd{display:none}
+  .panel{overflow:visible}.skills-open .stage{display:none}.skills-open .panel{grid-area:auto}
+}
+@font-face{font-family:"Toy Rounded";src:url("art/fonts/rounded-400.ttf") format("truetype");font-weight:400;font-display:swap}
+@font-face{font-family:"Toy Rounded";src:url("art/fonts/rounded-700.ttf") format("truetype");font-weight:600 900;font-display:swap}
+:root{--shop-type:"Toy Rounded","BIZ UDPGothic","Hiragino Maru Gothic ProN",sans-serif;font-family:var(--shop-type)}
+h1,.panel-heading h2,.balance strong,.wordmark,kbd{font-family:var(--shop-type)}
+.game .specimen{width:42px;height:42px;fill:none;stroke:none;flex:none}
+.upgrade-icon.special-icon{width:38px;height:44px;border:0;transform:none;background:none;box-shadow:none}
+.skills-open .panel{color-scheme:light;background:#ede1c8;color:var(--ink);border:2px solid var(--ink)}
+.skills-open .tabs,.skills-open .panel-footer{background:#e8d5b1;border-color:#85765e}
+.skills-open .tabs button,.skills-open .panel-footer,.skills-open .panel-footer button{color:#463d34}
+.skills-open .tabs button:hover{color:#782f27}
+#skills{--chart-border:#918675}
+.skill-header{padding-bottom:12px;border-bottom:3px double #8e816c;margin-bottom:14px}
+.skill-header h2,.skill-entry h3,.skill-inspector h3{color:#293f50}
+.skill-wallet,.skill-wallet strong{color:#5f4532}.skill-wallet svg{color:#95651f}
+.skill-entry,.skill-chart,.skill-inspector,#skill-detail-dialog{border:1px solid #9b8b70;border-radius:4px;box-shadow:2px 3px #aa997455}
+.skill-entry,.skill-map{background-color:#faf3de;background-image:linear-gradient(90deg,#577c8a22 1px,transparent 1px),linear-gradient(#577c8a22 1px,transparent 1px);background-size:14px 14px}
+.skill-entry p{color:#514b41}.skill-entry button,.skill-detail-offer button:not(:disabled),#skill-detail-dialog .skill-detail-offer button:not(:disabled){background:#9d4033;color:#fff8e5;border:1px solid #79362e}
+.skill-chart,.skill-chart-bar{background:#eee3c9;color:var(--ink)}
+.skill-chart-bar{padding:5px 12px}.skill-legend{color:#514e43}
+[data-lane=dice]{--route-color:#8c4b25}[data-lane=roll]{--route-color:#286858}[data-lane=arms]{--route-color:#345f84}[data-lane=root]{--route-color:#70522b}
+.skill-routes button:hover{color:#812e22}
+.skill-node,.skill-node[data-state]{background:#fbf2d9;color:#293d49;border-radius:3px;box-shadow:1px 2px #a99b8059}
+.skill-node[data-state=locked]{background:#ece8dc;color:#5a5851}
+.skill-legend [data-state=ready],.skill-node[data-state=ready]{--state-color:#a14131}
+.skill-legend [data-state=learned],.skill-node[data-state=learned]{--state-color:#33715e}
+.skill-node[data-state=ready]{border:2px solid var(--state-color)}
+.skill-node[data-state=learned]{border-top:4px solid var(--state-color)}
+.skill-node[aria-pressed=true]{outline:2px solid #2b4557;outline-offset:2px}
+.skill-node-rank,.skill-node[data-state=locked] .skill-node-icon{color:#635d51}
+.skill-node[data-state=ready] .skill-node-rank,.skill-node[data-upgrade=true] .skill-node-rank{color:#923b2b}
+.skill-inspector,#skill-detail-dialog{background:#fff5dd;color:#303b41;color-scheme:light}
+.skill-detail-icon{background:#ecdfc1;border-color:#a49a82}
+.skill-inspector .skill-detail-effect,.skill-detail-gates h4,.skill-detail-offer div{color:#3f4544}
+.skill-detail-gates,.skill-detail-offer{border-color:#bdad90}
+.skill-detail-gates ul,.skill-detail-offer strong{color:#873f2d}
+.skill-detail-gates li[data-met=true]{color:#30624f}
+.skill-detail-offer button:disabled,#skill-detail-dialog .skill-detail-offer button:disabled{background:#e6dfce;color:#655c52;border-color:#a09581}
+.skills-open button:focus-visible,#skill-detail-dialog button:focus-visible{outline-color:#943c2b}
+.skill-viewport{scrollbar-color:#908572 #e1d6be}
+#collection .panel-heading,#stats .panel-heading{border-bottom:3px double #655b4c;padding-bottom:10px}
+.journal-link{border-radius:2px;border:1px solid #9e8d72;border-top:4px solid #536e78;background:#fff6df}
+.journal-link:nth-child(2){border-top-color:#97503d}
+.collection-grid{gap:6px}.collection-entry{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:91px;padding:8px 5px;gap:3px;text-align:center;background:#fffae9;border:1px solid #b8ab8d;border-radius:2px;box-shadow:1px 2px #a7937126}
+.collection-entry strong{font-size:12px}.collection-entry.locked{background:#eee6d3}
+.collection-entry.locked .specimen{filter:grayscale(.86);opacity:.74}
+.milestone-tier.done{border:1px solid #a14735;color:#99422f;background:#fff0d5;border-radius:2px}
+.milestone-card,.skin-choice{border-radius:3px}
+#stats .records{border:1px solid #baa987;border-top:4px solid #374b58;background:#fff7df;padding:10px 13px 17px;box-shadow:1px 3px #ad9d7c55;clip-path:polygon(0 0,100% 0,100% 99%,96% 100%,92% 99%,87% 100%,83% 99%,79% 100%,74% 99%,68% 100%,62% 99%,56% 100%,50% 99%,44% 100%,39% 99%,31% 100%,26% 99%,19% 100%,12% 99%,6% 100%,0 99%)}
+.records div{border-bottom:1px dashed #bead8d;align-items:baseline}.records dd{color:#304555;text-align:right;white-space:nowrap}
+.records div:first-child{display:block;padding:8px 0 12px;border-bottom:3px double #9b8060}
+.records div:first-child dd{color:#903e31;font-size:clamp(24px,3vw,36px);line-height:1.4}
+@media(max-width:780px){#skills{padding:13px 9px 18px}.skill-header h2{font-size:22px}}
+.skills-open .tabs button{flex:1;max-width:190px;min-width:44px}
+.skills-open .tabs button[aria-selected=true],.skills-open .tabs button[aria-selected=true]:hover{background:#344756;color:#fff6df}
