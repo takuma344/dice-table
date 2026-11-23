@@ -197,7 +197,7 @@ kbd{color:#f0dcba;background:#304136;border:1px solid #56604d;border-radius:4px;
 .skill-legend span::before{content:"";display:inline-block;width:7px;height:7px;margin-right:4px;border:1px solid var(--state-color);border-radius:2px}
 .skill-legend [data-state="learned"]::before,.skill-legend [data-state="ready"]::before{background:var(--state-color)}
 .skill-viewport{overflow-x:auto;scrollbar-color:#53685d #132520}
-.skill-map{display:grid;position:relative;isolation:isolate;min-width:690px;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:62px repeat(4,73px);gap:29px 14px;padding:24px 24px 26px;
+.skill-map{display:grid;position:relative;isolation:isolate;min-width:690px;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:62px repeat(5,73px);gap:29px 14px;padding:24px 24px 26px;
   background:radial-gradient(circle,#758a6736 1px,transparent 1.4px) 0 0/16px 16px,radial-gradient(ellipse at 50% 8%,#23382e,#111f1c 72%)}
 [data-lane="root"]{--route-color:#eac783}
 [data-lane="dice"]{--route-color:#f3c18a}
@@ -557,6 +557,7 @@ h1{color:#fff0cf;text-shadow:0 2px #241c21}
   /* Reserve room for a six-character mantissa and a full-width Japanese unit. */
   display:block;inline-size:9ch;white-space:nowrap;line-height:1.15;text-align:end;
 }
+.fever-cooling .fever-track span{background:#8cabb5}
 .skill-wallet{flex:none;flex-wrap:nowrap;white-space:nowrap}
 .panel,.skills-open .panel{overflow:clip}
 .panel-scroll{

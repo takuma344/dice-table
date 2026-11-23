@@ -18,7 +18,7 @@ const materials = [
 ];
 const caps = {dice:40, material:3, arms:6, speed:7, wave:8, baseIncome:12, quality:5};
 const TREE_PRICE = 1000;
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 const LEGACY_CHIP_VALUE = 250;
 const MATERIAL_PRICES = [85,1250,8200];
 const SPECIAL_DICE = {
@@ -126,10 +126,15 @@ const talents = [
     detail:n=>"共鳴ボーナス ＋"+25*n+"%"},
   {id:"feverMode",lane:"roll",at:[4,3],icon:"speed",title:"フィーバー",costs:[4800],requires:{match:1},
     progress:(_,s)=>progressRequirement("累計共鳴",s.resonances,3),
-    detail:()=>"共鳴などで充填するフィーバーゲージを追加"},
+    detail:()=>"満タンで4秒間、配当とアーム速度が×1.5"},
   {id:"fever",lane:"roll",at:[4,4],icon:"speed",title:"熱気の蓄積",costs:[7800,57000,410000],requires:{feverMode:1},
     progress:(n,s)=>progressRequirement("フィーバー発動",s.feverStarts,[1,4,12][n-1]),
     detail:n=>"共鳴によるゲージ充填 ＋"+20*n+"%"},
+  {id:"feverDuration",lane:"roll",at:[3,5],icon:"speed",title:"狂熱の持続",costs:[15000,68000,320000],requires:{fever:1},
+    progress:(n,s)=>progressRequirement("フィーバー発動",s.feverStarts,[2,6,16][n-1]),
+    detail:n=>"フィーバーの持続 "+(FEVER_BASE_DURATION+n)+" 秒"},
+  {id:"feverPayout",lane:"roll",at:[3,6],icon:"coin",title:"狂熱の配当",costs:[34000,145000,620000],requires:n=>({feverDuration:n}),
+    detail:n=>"通常の狂熱 ×"+FEVER_PAYOUT[n]+" · バースト ×"+FEVER_BURST[n]+" / ×"+FEVER_FULL_BURST[n]},
   {id:"wave",lane:"arms",at:[6,2],icon:"wave",title:"手動衝撃波",costs:[1400],requires:{tree:1},
     detail:()=>"「テーブル衝撃波」を強化に追加"},
   {id:"arms",lane:"arms",at:[5,2],icon:"arm",title:"ロボットアーム",costs:[1800],requires:{tree:1},
@@ -176,7 +181,14 @@ const upgrades = [
 ];
 const SAVE = "lucky-dice-table.v1";
 const RESONANCE_WINDOW = .8;
-const FEVER_DURATION = 10;
+const FEVER_BASE_DURATION = 4;
+const FEVER_MAX_DURATION = 7;
+const FEVER_COOLDOWN = 16;
+const FEVER_ARM_SPEED = 1.5;
+const FEVER_CHARGE_PER_SECOND = 12;
+const FEVER_PAYOUT = [1.5,1.65,1.8,2];
+const FEVER_BURST = [2.5,3,3.5,4];
+const FEVER_FULL_BURST = [3.5,4,5,6];
 const SHAKE_COOLDOWN = .85;
 const SHAKE_DURATION = .24;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -194,8 +206,9 @@ function interval(level) {return Math.max(1.1,4.5*.81**level);}
 function chainRange(rank,speed) {return .13+.025*rank+.01*speed;}
 function waveRange(level) {return .10+.025*(level-1);}
 function armWaveRange(level) {return .17+.015*Math.max(0,level-1);}
-function feverMultiplier() {return state.feverLeft>0 ? 2 : 1;}
-function armInterval() {return interval(state.speed)/feverMultiplier();}
+function feverDuration(progress = state) {return FEVER_BASE_DURATION+(progress.talents.feverDuration ?? 0);}
+function feverArmSpeed() {return state.feverLeft>0 ? FEVER_ARM_SPEED : 1;}
+function armInterval() {return interval(state.speed)/feverArmSpeed();}
 function dicePriceBasis(progress) {
   // Each merge preserves the number of original dice represented by its two inputs.
   return progress.dieStars.reduce((count,stars)=>count+2**(stars-1),0);
@@ -238,7 +251,7 @@ function normalizeMaterial(rank,fallback = 0) {
 function fresh() {
   return {version:SAVE_VERSION,tree:false,coins:0,dice:1,dieMaterials:[0],dieSpecials:[null],dieStars:[1],
     baseIncome:0,quality:0,arms:0,speed:0,wave:0,rolls:0,resonances:0,
-    best:0,earned:0,seconds:0,muted:false,feverCharge:0,feverLeft:0,
+    best:0,earned:0,seconds:0,muted:false,feverCharge:0,feverLeft:0,feverCooldown:0,
     skin:0,feverBurstRolls:0,masteryGold:0,masterySpecial:0,masteryBurst:0,masteryRewards:0,
     collection:[],achievements:[],highestStar:1,merges:0,feverStarts:0,feverCoins:0,bestFeverCoins:0,bestFeverBursts:0,
     talents:Object.fromEntries(talents.map(talent=>[talent.id,0])),
@@ -291,7 +304,8 @@ function load() {
     for (const key of Object.keys(initial)) {
       if (key === "talents" || key === "version" || Array.isArray(initial[key])) continue;
       if (key === "muted" || key === "tree") initial[key] = raw[key] === true;
-      else if (key === "feverLeft" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,FEVER_DURATION);
+      else if (key === "feverLeft" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,FEVER_MAX_DURATION);
+      else if (key === "feverCooldown" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,FEVER_COOLDOWN);
       else if (key === "feverCharge" && Number.isFinite(raw[key])) initial[key] = clamp(raw[key],0,99.99);
       else if (Number.isFinite(raw[key])) {
         const max = key === "savedAt" ? Date.now() : (caps[key] ?? Number.MAX_SAFE_INTEGER);
@@ -344,7 +358,10 @@ function load() {
     // Learned skills remain active even when an older save lacks a newly required parent.
     if (Object.values(initial.talents).some(Boolean)) initial.tree = true;
     initial.merges = Math.max(initial.merges,2**(initial.highestStar-1)-1);
-    if (!initial.talents.feverMode) initial.feverLeft = initial.feverCharge = initial.feverCoins = 0;
+    if (!initial.talents.feverMode) initial.feverLeft = initial.feverCharge = initial.feverCoins = initial.feverCooldown = 0;
+    initial.feverLeft = Math.min(initial.feverLeft,feverDuration(initial));
+    if (initial.feverLeft) initial.feverCooldown = 0;
+    if (initial.feverLeft || initial.feverCooldown) initial.feverCharge = 0;
     if (!initial.feverLeft) initial.feverBurstRolls = 0;
     if (!skins[initial.skin] || !skinAvailable(skins[initial.skin],initial)) initial.skin = 0;
   } catch {
@@ -353,6 +370,7 @@ function load() {
   return initial;
 }
 let state = load();
+let feverChargeBudget = 0;
 let time = 0;
 let width = 1, height = 1, resolution = 1, unit = 1;
 let board;
@@ -481,31 +499,46 @@ function trackMastery(scanDice = true) {
   announce(state.masteryRewards===ALL_MASTERY ? "オーロラブラック解放" : "テーブルマスタリー達成");
 }
 function chargeFever(linked,combo,sameWave = false) {
-  const charge = 10+3*Math.min(4,linked-1)+Math.min(5,combo-1)+(sameWave ? 3 : 0);
+  const charge = 7+2*Math.min(4,linked-1)+Math.min(4,combo-1)+(sameWave ? 2 : 0);
   gainFever(Math.round(charge*(1+.2*state.talents.fever)));
 }
 function gainFever(charge) {
-  if (!state.talents.feverMode || state.feverLeft>0) return;
-  state.feverCharge = Math.round((state.feverCharge+charge*(1+milestoneBonus().fever/100))*100)/100;
+  if (!state.talents.feverMode || state.feverLeft>0 || state.feverCooldown>0) return;
+  const points = Math.min(feverChargeBudget,charge*(1+milestoneBonus().fever/100));
+  feverChargeBudget -= points;
+  state.feverCharge += points;
   if (state.feverCharge<100) return;
   impactPrint(board.x+board.w/2,board.y+board.h/2,"fever");
   state.feverCharge = 0;
-  state.feverLeft = FEVER_DURATION;
+  state.feverLeft = feverDuration();
+  feverChargeBudget = 0;
   state.feverBurstRolls = 0;
   state.feverCoins = 0;
   state.feverStarts++;
-  for (const arm of arms) arm.next = time+Math.max(0,arm.next-time)/2;
+  for (const arm of arms) arm.next = time+Math.max(0,arm.next-time)/FEVER_ARM_SPEED;
+  uiDirty = true;
   sound("fever");
 }
 function tickFever(dt) {
-  if (state.feverLeft<=0) return;
+  if (state.feverCooldown>0) {
+    state.feverCooldown = Math.max(0,state.feverCooldown-dt);
+    if (state.feverCooldown===0) uiDirty = true;
+    return;
+  }
+  if (state.feverLeft<=0) {
+    if (state.talents.feverMode) {
+      feverChargeBudget = Math.min(FEVER_CHARGE_PER_SECOND,feverChargeBudget+FEVER_CHARGE_PER_SECOND*dt);
+    }
+    return;
+  }
   state.feverLeft = Math.max(0,state.feverLeft-dt);
   if (state.feverLeft>1e-8) return;
   state.feverLeft = 0;
+  state.feverCooldown = FEVER_COOLDOWN;
   state.feverCharge = 0;
   state.feverBurstRolls = 0;
   state.feverCoins = 0;
-  for (const arm of arms) arm.next = time+Math.max(0,arm.next-time)*2;
+  for (const arm of arms) arm.next = time+Math.max(0,arm.next-time)*FEVER_ARM_SPEED;
   uiDirty = true;
 }
 function idleReward(from, to) {
@@ -1121,18 +1154,22 @@ function renderFever() {
   feverView.meter.hidden = !unlocked;
   feverStage.classList.toggle("fever-unlocked",unlocked);
   const active = state.feverLeft>0;
-  const fraction = active ? state.feverLeft/FEVER_DURATION : state.feverCharge/100;
-  const value = active ? Math.ceil(state.feverLeft)+" 秒" : Math.floor(state.feverCharge)+"%";
-  const label = active ? "黄金の狂熱タイム" : "フィーバー";
+  const cooling = state.feverCooldown>0;
+  const seconds = active ? state.feverLeft : state.feverCooldown;
+  const fraction = active ? state.feverLeft/feverDuration() :
+    cooling ? 1-state.feverCooldown/FEVER_COOLDOWN : state.feverCharge/100;
+  const value = active || cooling ? Math.ceil(seconds)+" 秒" : Math.floor(state.feverCharge)+"%";
+  const label = active ? "黄金の狂熱タイム" : cooling ? "再充填まで" : "フィーバー";
   feverStage.classList.toggle("fevers-on",active);
+  feverView.meter.classList.toggle("fever-cooling",cooling);
   if (feverView.label.textContent!==label) feverView.label.textContent = label;
   feverView.effect.hidden = !active;
-  const effect = time<burstUntil ? "バースト ×"+burstPayout : "コイン・アーム ×2";
+  const effect = time<burstUntil ? "バースト ×"+burstPayout : "配当 ×"+FEVER_PAYOUT[state.talents.feverPayout];
   if (feverView.effect.textContent!==effect) feverView.effect.textContent = effect;
   if (feverView.value.textContent!==value) {
     feverView.value.textContent = value;
-    feverView.progress.setAttribute("aria-valuetext",active ? "残り "+value : value+" 充填");
   }
+  feverView.progress.setAttribute("aria-valuetext",active || cooling ? "残り "+value : value+" 充填");
   feverView.progress.setAttribute("aria-valuenow",String(Math.round(fraction*100)));
   feverView.fill.style.transform = "scaleX("+fraction+")";
 }
@@ -1559,9 +1596,10 @@ function spawnDie() {
   confine(die,false);
 }
 function spawnArm() {
-  arms.push({next:time+(.48+arms.length*.21)/feverMultiplier(),sweep:null});
+  arms.push({next:time+(.48+arms.length*.21)/feverArmSpeed(),sweep:null});
 }
 function resetTable() {
+  feverChargeBudget = 0;
   firstThrow = state.rolls===0 && state.dice===1;
   resonanceResult = null;
   dice = []; arms = []; waves = []; beams = []; popups = []; particles = [];
@@ -1733,23 +1771,25 @@ function settle(die) {
     if (star.heat) gainFever(star.heat);
   }
   const heat = special==="heat" ? specialStats("heat",stars) : null;
-  if (heat && die.face>=heat.face && state.feverLeft===0) {
+  if (heat && die.face>=heat.face && state.feverLeft===0 && state.feverCooldown===0) {
     gainFever(heat.charge);
     spark(die.x,die.y,["#ffe08a","#fff0c4"],8);
   }
   const boost = auraBonus(die);
   if (boost.bonus) spark(die.x,die.y,["#90eed0"],4);
   if (boost.heat) gainFever(boost.heat);
-  const multiplier = feverMultiplier();
+  const feverActive = state.feverLeft>0;
+  const payoutRank = state.talents.feverPayout;
+  const multiplier = feverActive ? FEVER_PAYOUT[payoutRank] : 1;
   const highCombo = linked.size>0 && streak>=4;
   const highStar = stars>=3;
   const specialSynergy = blastFired || (heat && die.face>=heat.face) || boost.bonus>0;
   const specialActive = specialSynergy || special==="aura";
-  const burst = multiplier===2 && ((highStar && (highCombo || specialActive)) || (highCombo && specialActive)) ?
-    (highStar && highCombo && specialActive ? 6 : 4) : 0;
+  const burst = feverActive && ((highStar && (highCombo || specialActive)) || (highCombo && specialActive)) ?
+    (highStar && highCombo && specialActive ? FEVER_FULL_BURST[payoutRank] : FEVER_BURST[payoutRank]) : 0;
   const chainBonus = linked.size ? .15*clamp(streak-2,0,4)+
     (specialSynergy ? .25 : 0)+(die.aimedThrow ? .15 : 0) : 0;
-  const heatBonus = multiplier===2 ? heat?.feverBonus ?? 0 : 0;
+  const heatBonus = feverActive ? heat?.feverBonus ?? 0 : 0;
   // Parallel table bonuses build on the same base before fever or burst multiplies the roll.
   const boosted = base*(1+chainBonus+boost.bonus/100+heatBonus)+bonus;
   const amount = Math.round(boosted*(burst || multiplier)*(1+rewards.income/100));
@@ -1757,7 +1797,7 @@ function settle(die) {
   if (linked.size) resonanceResult = {
     die,partners:[...linked],face:die.face,amount,combo:streak,burst,start:time,until:time+1.1,
   };
-  if (multiplier===2) {
+  if (feverActive) {
     state.feverCoins = Math.min(Number.MAX_SAFE_INTEGER,state.feverCoins+amount);
     state.bestFeverCoins = Math.max(state.bestFeverCoins,state.feverCoins);
   }
@@ -1774,7 +1814,7 @@ function settle(die) {
   sound("land");
   sound("coin");
   const life = bonus || burst ? 1.1 : .85;
-  if (!linked.size) placePopup({x:die.x,y:die.y-14*unit,die,life,total:life,amount,fever:multiplier===2,burst});
+  if (!linked.size) placePopup({x:die.x,y:die.y-14*unit,die,life,total:life,amount,fever:feverActive,burst});
   awardMilestones();
 }
 function tickDie(die,dt) {
@@ -1863,7 +1903,7 @@ function armBase(index) {
 }
 function tickArm(arm,dt) {
   if (arm.sweep) {
-    arm.sweep.elapsed += dt*feverMultiplier();
+    arm.sweep.elapsed += dt*feverArmSpeed();
     if (arm.sweep.elapsed>.66) arm.sweep = null;
   }
   if (time >= arm.next) {
@@ -2740,7 +2780,7 @@ function draw() {
   ctx.drawImage(backdrop,0,0,width,height);
   if (state.feverLeft>0) {
     const {outer:o,rail} = board;
-    const intro = reducedMotion.matches ? 0 : clamp((state.feverLeft-FEVER_DURATION+.45)/.45,0,1);
+    const intro = reducedMotion.matches ? 0 : clamp((state.feverLeft-feverDuration()+.45)/.45,0,1);
     rounded(ctx,o.x+2*unit,o.y+2*unit,Math.max(1,o.w-4*unit),Math.max(1,o.h-4*unit),rail*1.7);
     ctx.strokeStyle="rgba(255,204,120,"+(.55+.35*intro)+")";
     ctx.lineWidth=2.4*unit;
@@ -3011,7 +3051,7 @@ function frame(now) {
       renderUI();
       lastUI=now;
       lastFeverUI=now;
-    } else if (state.feverLeft>0 && now-lastFeverUI>=50) {
+    } else if ((state.feverLeft>0 || state.feverCooldown>0) && now-lastFeverUI>=50) {
       renderFever();
       lastFeverUI=now;
     }
