@@ -2361,14 +2361,25 @@ function placePopup(popup) {
   nearest.burst = Math.max(nearest.burst ?? 0,popup.burst ?? 0);
   nearest.life = Math.max(nearest.life,.4);
 }
+// Visual tiers follow the existing combo and burst values.
+const resonanceTiers = [
+  {core:"#d0fff2",glow:"#64ffcb",shade:"#174d54",lift:0},
+  {core:"#fff2b4",glow:"#ffbc60",shade:"#754524",lift:2},
+  {core:"#fff0f9",glow:"#ff87ce",shade:"#793b66",lift:4},
+  {core:"#fff8d0",glow:"#ffd252",shade:"#925123",lift:6},
+];
+function resonanceTier(event) {
+  return resonanceTiers[event.burst ? 3 : event.combo>=4 ? 2 : event.combo>=2 ? 1 : 0];
+}
 function payoutFont(size) {
   return "900 "+size+"px 'Toy Rounded','BIZ UDPGothic',sans-serif";
 }
 function drawPayout(entry,position) {
   const {x,y} = position;
-  const {amount,caption,color,size,age,life} = entry;
+  const {amount,caption,color,size,captionSize,tier,age,life} = entry;
   const animated = !reducedMotion.matches;
-  const bounce = animated ? 1+.18*Math.sin(Math.PI*clamp(age/.24,0,1)) : 1;
+  const bounce = animated ? 1+(.18+(tier?.lift ?? 0)*.015)*Math.sin(Math.PI*clamp(age/.28,0,1)) : 1;
+  const flash = tier && animated && age<.10;
   const rise = animated ? Math.min(5,age*10) : 0;
   ctx.save();
   ctx.translate(Math.round(x),Math.round(y-rise));
@@ -2376,15 +2387,19 @@ function drawPayout(entry,position) {
   ctx.globalAlpha=animated ? clamp(life/.21,0,1) : 1;
   ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.lineJoin="bevel";
   ctx.font=payoutFont(size);
-  ctx.lineWidth=4; ctx.strokeStyle="#221d2a";
+  if (tier) {
+    ctx.lineWidth=9; ctx.strokeStyle=tier.shade;
+    ctx.strokeText(amount,0,caption ? -5 : 0);
+  }
+  ctx.lineWidth=tier ? 5 : 4; ctx.strokeStyle="#171521";
   ctx.strokeText(amount,0,caption ? -5 : 0);
-  ctx.fillStyle=color;
+  ctx.fillStyle=flash ? "#fffdf2" : color;
   ctx.fillText(amount,0,caption ? -5 : 0);
   if (caption) {
-    ctx.font=payoutFont(11);
-    ctx.lineWidth=2.5;
+    ctx.font=payoutFont(captionSize);
+    ctx.lineWidth=tier ? 3.5 : 2.5;
     ctx.strokeText(caption,0,size*.56+2);
-    ctx.fillStyle="#fff3d4"; ctx.fillText(caption,0,size*.56+2);
+    ctx.fillStyle=tier?.core ?? "#fff3d4"; ctx.fillText(caption,0,size*.56+2);
   }
   ctx.restore();
 }
@@ -2407,12 +2422,25 @@ function findPayoutPosition(entry,anchor,bounds,preferred) {
       preferred.y>=y+halfH && preferred.y<=y+h-halfH ? [preferred] : []),
     fit(anchor.x,anchor.y),
   ];
-  for (let dy=18;dy<=54;dy+=18) {
+  const searchDepth = entry.tier ? 126 : 54;
+  for (let dy=18;dy<=searchDepth;dy+=18) {
     for (const dx of [0,-36,36,-72,72]) {
       positions.push(fit(anchor.x+dx,anchor.y-dy),fit(anchor.x+dx,anchor.y+dy));
     }
   }
-  return positions.find(fits);
+  const nearby = positions.find(fits);
+  if (nearby || !entry.tier) return nearby;
+
+  // Reserve the header fallback for tables with no usable gap anywhere on the felt.
+  let best, distance=Infinity;
+  for (let py=y+halfH;py<=y+h-halfH;py+=10) {
+    for (let px=x+halfW;px<=x+w-halfW;px+=10) {
+      const cost=(px-anchor.x)**2+(py-anchor.y)**2;
+      if (cost>=distance || !fits({x:px,y:py})) continue;
+      best={x:px,y:py}; distance=cost;
+    }
+  }
+  return best;
 }
 function drawPayouts(event) {
   const visible = popups.filter(p=>p.life>0 && !event?.partners.includes(p.die));
@@ -2433,15 +2461,18 @@ function drawPayouts(event) {
     const caption = announceBurst ? "バースト ×"+source.burst :
       resonance ? "共鳴 "+source.face+(source.combo>1 ? " · "+source.combo+"連鎖" : "") : "";
     const amount = "＋"+short(source.amount);
-    const size = resonance || announceBurst ? clamp(width*.046,20,26) : clamp(16*unit,14,18);
+    const tier = resonance || announceBurst ? resonanceTier(source) : null;
+    const size = tier ? clamp(width*.052,22,29)+tier.lift : clamp(16*unit,14,18);
+    const captionSize = tier ? (width<460 ? 12 : 13) : 11;
+    const maxScale = reducedMotion.matches ? 1 : 1.18+(tier?.lift ?? 0)*.015;
     ctx.font=payoutFont(size);
     const amountWidth=ctx.measureText(amount).width;
-    ctx.font=payoutFont(11);
+    ctx.font=payoutFont(captionSize);
     const entry={
-      amount,caption,size,
-      halfW:Math.ceil(Math.max(amountWidth,ctx.measureText(caption).width)*.59)+4,
-      halfH:Math.ceil(size*.59)+(caption ? 13 : 7),
-      color:announceBurst ? "#ffe36e" : resonance ? "#a9ffd8" : source.fever ? "#ffdc86" : "#fff2c6",
+      amount,caption,size,captionSize,tier,
+      halfW:Math.ceil(Math.max(amountWidth,ctx.measureText(caption).width)*maxScale/2)+(tier ? 6 : 4),
+      halfH:Math.ceil((caption ? size*.56+captionSize*.5+2 : size*.5)*maxScale)+6,
+      color:tier?.glow ?? (source.fever ? "#ffdc86" : "#fff2c6"),
       age:resonance ? time-source.start : source.total-source.life,
       life:resonance ? source.until-time : source.life,
     };
@@ -2638,20 +2669,39 @@ function drawResonanceEnergy(event) {
   if (!participants.length) return;
   const moving = !reducedMotion.matches;
   const age = time-event.start;
+  const tier = resonanceTier(event);
+  const fade = clamp((event.until-time)/.26,0,1);
   ctx.save();
   for (const [index,die] of participants.entries()) {
     const {x,y} = dieCenter(die);
-    const radius = Math.max(13,22*unit*starStats(die).size);
-    const phase = moving ? clamp((age-index*.025)/.65,0,1) : .35;
-    ctx.globalAlpha = clamp((event.until-time)/.3,0,1);
-    for (let i=0;i<12;i++) {
-      const angle = i*Math.PI/6+(moving ? phase*.5 : 0);
-      const reach = radius*(.85+phase*.48);
-      const px=Math.round(x+Math.cos(angle)*reach);
-      const py=Math.round(y+5*unit+Math.sin(angle)*reach*.75);
-      ctx.fillStyle=i%3===0 ? "#fff4aa" : "#82e9c0";
-      const size = i%3===0 ? 3 : 2;
-      ctx.fillRect(px,py,size,size);
+    const groundY=y+7*unit;
+    const radius=Math.max(17,(27+tier.lift*.5)*unit*starStats(die).size);
+    const t=moving ? clamp((age-index*.022)/.55,0,1) : .5;
+    // The center stays lit behind the die while a stepped ring expands away from it.
+    ctx.globalAlpha=fade*(.24+(1-t)*.14);
+    ctx.fillStyle=tier.glow;
+    ctx.beginPath(); ctx.ellipse(x,groundY,radius*1.13,radius*.78,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=tier.shade;
+    ctx.beginPath(); ctx.ellipse(x,groundY,radius*.93,radius*.59,0,0,Math.PI*2); ctx.fill();
+    const dots=28+(tier.lift>=4 ? 8 : 0);
+    for (let i=0;i<dots;i++) {
+      const angle=i*Math.PI*2/dots;
+      const dx=Math.cos(angle),dy=Math.sin(angle);
+      const px=Math.round(x+dx*radius),py=Math.round(groundY+dy*radius*.72);
+      const bright=i%4===0;
+      ctx.fillStyle=bright ? tier.core : tier.glow;
+      ctx.globalAlpha=fade*(bright ? 1 : .77);
+      ctx.fillRect(px-1,py-1,bright ? 4 : 3,bright ? 4 : 3);
+      if (moving && t<1 && i%2===0) {
+        const reach=radius*(1.07+t*.52);
+        const sx=Math.round(x+dx*reach),sy=Math.round(groundY+dy*reach*.73);
+        ctx.globalAlpha=fade*(1-t)*.92;
+        ctx.fillRect(sx,sy,2,2);
+        if (bright) {
+          ctx.fillRect(sx-2,sy,6,1);
+          ctx.fillRect(sx,sy-2,1,6);
+        }
+      }
     }
   }
   if (moving) {
@@ -2660,15 +2710,16 @@ function drawResonanceEnergy(event) {
       const from=dieCenter(beam.a), to=dieCenter(beam.b);
       const progress=1-beam.life/.49;
       const arc=Math.min(22,Math.hypot(to.x-from.x,to.y-from.y)*.22);
-      for (let i=0;i<7;i++) {
-        const t=progress*1.48-i*.07;
+      for (let i=0;i<9;i++) {
+        const t=progress*1.48-i*.064;
         if (t<0 || t>1) continue;
         const x=Math.round(from.x+(to.x-from.x)*t);
         const y=Math.round(from.y+(to.y-from.y)*t-Math.sin(Math.PI*t)*arc+
           Math.sin(beam.phase+i*2)*3*Math.sin(Math.PI*t));
-        ctx.globalAlpha=1-i*.12;
-        ctx.fillStyle=i===0 ? "#fff8ba" : "#8ff0ca";
-        ctx.fillRect(x,y,i<2 ? 4 : 2,i<2 ? 4 : 2);
+        ctx.globalAlpha=1-i*.10;
+        ctx.fillStyle=i===0 ? tier.core : tier.glow;
+        const size=i<2 ? 5 : 2+tier.lift/2;
+        ctx.fillRect(x,y,size,size);
         if (i===0) {
           ctx.fillRect(x-1,y+1,6,2);
           ctx.fillRect(x+1,y-1,2,6);
@@ -2722,10 +2773,10 @@ function draw() {
     ctx.fillStyle="rgba(6,23,15,"+(.36/(1+lift*.016))+")";
     ctx.fill();
   }
-  ctx.restore();
-  for (const beam of beams) if (beam.arm && beam.life>0) drawBeam(beam);
   const resonance = activeResonance();
   drawResonanceEnergy(resonance);
+  ctx.restore();
+  for (const beam of beams) if (beam.arm && beam.life>0) drawBeam(beam);
   arms.forEach(drawArm);
   if (firstThrow && dice.length===1 && !dice[0].rolling) {
     const center = dieCenter(dice[0]);
