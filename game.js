@@ -1446,9 +1446,9 @@ function resize() {
   board = {outer,rail,depth,x:outer.x+rail,y:outer.y+rail,w:Math.max(1,outer.w-rail*2),h:Math.max(1,outer.h-rail*2)};
   const glowX = board.x+board.w*.5, glowY = board.y+board.h*.45;
   feverGlow = ctx.createRadialGradient(glowX,glowY,0,glowX,glowY,Math.max(board.w,board.h)*.66);
-  feverGlow.addColorStop(0,"#ffcc472c");
-  feverGlow.addColorStop(.58,"#e6aa181a");
-  feverGlow.addColorStop(1,"#ffc65d77");
+  feverGlow.addColorStop(0,"#ffcf4c4a");
+  feverGlow.addColorStop(.58,"#f4bb3827");
+  feverGlow.addColorStop(1,"#ffc65d99");
   if (old) {
     const ratio = unit/oldUnit;
     function move(point) {
@@ -2040,18 +2040,58 @@ const pips = [
   [[-1,-1],[1,-1],[-1,1],[1,1]],[[-1,-1],[1,-1],[0,0],[-1,1],[1,1]],
   [[-1,-1],[1,-1],[-1,0],[1,0],[-1,1],[1,1]],
 ];
-function softFace(points,radius) {
-  ctx.beginPath();
-  points.forEach((p,i)=>{
-    const prev = points[(i+3)%4], next = points[(i+1)%4];
-    const before = Math.min(.23,radius/(Math.hypot(p.x-prev.x,p.y-prev.y)||1));
-    const after = Math.min(.23,radius/(Math.hypot(p.x-next.x,p.y-next.y)||1));
-    const x = p.x+(prev.x-p.x)*before, y = p.y+(prev.y-p.y)*before;
-    if (i) ctx.lineTo(x,y);
-    else ctx.moveTo(x,y);
-    ctx.quadraticCurveTo(p.x,p.y,p.x+(next.x-p.x)*after,p.y+(next.y-p.y)*after);
-  });
-  ctx.closePath();
+// Faces are painted as small, fixed pixel tiles and projected onto the same 3D mesh.
+const faceTileSize = 32;
+const diceFaceTiles = new Map();
+function diceFaceTile(rank,value,lit) {
+  const key = rank*12+(value-1)*2+Number(lit);
+  if (diceFaceTiles.has(key)) return diceFaceTiles.get(key);
+  const tile = document.createElement("canvas");
+  tile.width = tile.height = faceTileSize;
+  const g = tile.getContext("2d");
+  const material = materials[rank];
+  const rect = (x,y,w,h,color)=>{g.fillStyle=color;g.fillRect(x,y,w,h);};
+  pixelFrame(g,0,0,32,32,3,material.high);
+  g.save();
+  g.clip();
+  if (rank===0) {
+    // Open-pore grain stays muted, with long interrupted fibers rather than a specular band.
+    for (const [x,y,w] of [[3,5,12],[17,7,11],[3,12,17],[22,15,8],[4,20,12],[13,24,14],[3,27,10]]) {
+      rect(x,y,w,1,"#ad805163"); rect(x+3,y+1,w-3,1,"#fff2cf76");
+    }
+  } else if (rank===1) {
+    // Copper reflects a wide warm band with a darker red return.
+    pixelPolygon(g,[[2,19],[17,3],[27,3],[8,25],[2,28]],"#fdac7c");
+    pixelPolygon(g,[[3,14],[13,3],[18,3],[5,18]],"#ffe0b4");
+    pixelPolygon(g,[[11,29],[29,10],[29,18],[19,29]],"#d58b68");
+  } else if (rank===2) {
+    rect(2,3,28,27,"#9dabb4"); rect(2,7,28,7,"#c6d4d8");
+    rect(3,7,23,2,"#f2f7ed"); rect(2,17,28,13,"#8394a1");
+    for (const [x,y,w] of [[5,15,10],[17,18,10],[4,22,14],[14,25,13]]) {
+      rect(x,y,w,1,"#b2bec6");
+    }
+  } else {
+    rect(2,3,28,27,"#e9ad44");
+    pixelPolygon(g,[[2,19],[18,3],[27,3],[7,23],[2,26]],"#ffda68");
+    pixelPolygon(g,[[4,16],[17,3],[21,3],[5,20]],"#fff4bd");
+    pixelPolygon(g,[[11,29],[29,11],[29,18],[19,29]],"#c98228");
+    rect(20,6,5,1,"#fffbe0"); rect(22,4,1,5,"#fffbe0");
+  }
+  rect(2,2,28,1,rank===2 ? "#f1f7ef" : "#fff4d0");
+  rect(2,3,1,25,rank===0 ? "#f9ebcb" : "#fff2bf");
+  rect(29,3,1,26,material.low);
+  rect(3,29,26,2,material.side);
+  if (!lit) rect(0,0,32,32,rank===0 ? "#60463258" : material.edge+"77");
+  for (const [dx,dy] of pips[value]) {
+    const x=16+dx*8, y=16+dy*8, r=value===1 ? 4 : 3;
+    const red = rank===0 && value===1;
+    pixelFrame(g,x-r,y-r+1,r*2,r*2,2,lit ? "#fff1bc" : material.low);
+    pixelFrame(g,x-r,y-r,r*2,r*2,2,red ? "#913b32" : material.pip);
+    rect(x-r+2,y+r-2,r*2-4,1,red ? "#d8865f" : "#a1987b8a");
+  }
+  g.restore();
+  diceFaceTiles.set(key,tile);
+  return tile;
 }
 const paintDepth = die => die.y+die.z*.9;
 const edgeSide = (a,b,p) => (b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x);
@@ -2079,36 +2119,9 @@ function drawDie(die,preset = null) {
     const ux=q.x-p.x, uy=q.y-p.y, vx=s.x-p.x, vy=s.y-p.y;
     if (ux*vy-uy*vx < .7) continue;
     const bright = Math.abs(ux*vy-uy*vx) > size*size*2;
-    softFace([p,q,r,s],2.9*unit);
-    ctx.fillStyle = bright ? material.high : Math.abs(uy)>Math.abs(ux) ? material.side : material.low;
-    ctx.fill();
-    ctx.lineWidth = 2*unit;
-    ctx.strokeStyle = "#233346";
-    ctx.stroke();
     ctx.save();
     ctx.transform(ux,uy,vx,vy,p.x,p.y);
-    if (bright) {
-      ctx.fillStyle = "#fff7dc97";
-      ctx.fillRect(.08,.07,.84,.043);
-      ctx.fillRect(.07,.11,.044,.76);
-      ctx.fillStyle = material.low;
-      ctx.fillRect(.12,.87,.76,.045);
-      ctx.fillRect(.87,.18,.044,.69);
-      if (rank===0) {
-        ctx.fillStyle="#9e70482b";
-        for (let i=1;i<=5;i++) {
-          const y=i*.14, x=i%2 ? .13 : .42;
-          ctx.fillRect(x,y,.27,.025);
-          ctx.fillRect(x+.27,y+.025,.11,.024);
-        }
-      } else {
-        ctx.fillStyle = rank===1 ? "#ffe0b875" : "#ffffed89";
-        ctx.fillRect(.18,.21,.39,.034);
-        ctx.fillRect(.52,.25,.24,.035);
-        ctx.fillStyle = material.low;
-        ctx.fillRect(.46,.75,.34,.033);
-      }
-    }
+    ctx.drawImage(diceFaceTile(rank,value,bright),0,0,1,1);
     if (special) {
       // A narrow enamel band leaves the material and all six pip layouts visible.
       ctx.fillStyle=special.ink;
@@ -2125,20 +2138,22 @@ function drawDie(die,preset = null) {
         ctx.fillRect(.18,.15,.64,.035);
       }
     }
-    for (const [dx,dy] of pips[value]) {
-      const x=.5+dx*.237, y=.5+dy*.237, radius=value===1 ? .105 : .082;
-      const pip = rank===0 && value===1 ? "#9c3b31" : material.pip;
-      const flat = radius*.57;
-      ctx.beginPath();
-      ctx.moveTo(x-flat,y-radius); ctx.lineTo(x+flat,y-radius);
-      ctx.lineTo(x+radius,y-flat); ctx.lineTo(x+radius,y+flat);
-      ctx.lineTo(x+flat,y+radius); ctx.lineTo(x-flat,y+radius);
-      ctx.lineTo(x-radius,y+flat); ctx.lineTo(x-radius,y-flat); ctx.closePath();
-      ctx.fillStyle=pip; ctx.fill();
-      ctx.fillStyle=rank===0 && value===1 ? "#d87f58" : "#c9b99587";
-      ctx.fillRect(x-flat,y+flat,flat*2,.022);
-    }
     ctx.restore();
+  }
+  // One common seam weight keeps lit and shaded faces joined while the die tumbles.
+  ctx.strokeStyle = "#233346";
+  ctx.lineJoin = "bevel";
+  ctx.lineWidth = Math.max(1,1.55*unit);
+  for (const [,a,b,c,d] of faces) {
+    if (edgeSide(points[a],points[b],points[d])<.7) continue;
+    ctx.beginPath();
+    for (const [index,corner] of [a,b,c,d].entries()) {
+      const {x,y}=points[corner];
+      if (index) ctx.lineTo(Math.round(x),Math.round(y));
+      else ctx.moveTo(Math.round(x),Math.round(y));
+    }
+    ctx.closePath();
+    ctx.stroke();
   }
   if (special) {
     const x = die.x-die.z*.1+size*.78, y = die.y-die.z*.51-size*.95;
@@ -2221,12 +2236,14 @@ function drawWave(wave) {
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius,0,Math.PI*2);
   const color = wave.kind==="blast" ? "255,153,91" : wave.kind==="arm" ? "145,247,213" :
     wave.kind==="star" ? "200,173,255" : "255,213,137";
-  ctx.strokeStyle="rgba("+color+","+(1-t)*.66+")";
-  ctx.setLineDash([6*unit,3*unit]);
-  ctx.lineWidth=Math.min(radius*.18,(3.5-2*t)*unit);ctx.stroke();
+  ctx.strokeStyle="rgba("+color+","+(1-t)*.28+")";
+  ctx.lineWidth=Math.min(radius*.35,(13-5*t)*unit);ctx.stroke();
+  ctx.strokeStyle="rgba("+color+","+(1-t)*.98+")";
+  ctx.lineWidth=Math.min(radius*.26,(5.5-2*t)*unit);ctx.stroke();
+  ctx.setLineDash([7*unit,3*unit]);
   ctx.beginPath();ctx.arc(wave.x,wave.y,radius*.8,0,Math.PI*2);
-  ctx.strokeStyle="rgba("+color+","+(1-t)*.25+")";
-  ctx.lineWidth=Math.min(radius*.08,unit);ctx.stroke();
+  ctx.strokeStyle="rgba("+color+","+(1-t)*.55+")";
+  ctx.lineWidth=Math.min(radius*.14,2.5*unit);ctx.stroke();
   ctx.setLineDash([]);
 }
 function drawBeam(beam) {
@@ -2362,13 +2379,13 @@ function effectSheet(name,frameWidth,frameHeight,columns,frames,pivotX,pivotY) {
 }
 const hitSheet = effectSheet("hit-spark",136,80,4,16,44,47);
 const pixelEffects = {
-  throw:{sheet:hitSheet,duration:.26,scale:.61},
-  rail:{sheet:hitSheet,duration:.29,scale:.70},
-  clash:{sheet:hitSheet,duration:.32,scale:.82},
-  coins:{sheet:effectSheet("coin-spin",56,56,7,48,28,28),duration:.52,scale:.50},
-  resonance:{sheet:effectSheet("crit-hit",216,136,5,28,84,89),duration:.62,scale:.70},
-  blast:{sheet:effectSheet("plasma-explosion",224,200,7,52,112,100),duration:.80,scale:.88},
-  fever:{sheet:effectSheet("mana-burst",208,150,7,55,104,95),duration:1.05,scale:1.16},
+  throw:{sheet:hitSheet,duration:.26,scale:.91},
+  rail:{sheet:hitSheet,duration:.29,scale:1.08},
+  clash:{sheet:hitSheet,duration:.32,scale:1.26},
+  coins:{sheet:effectSheet("coin-spin",56,56,7,48,28,28),duration:.52,scale:.90},
+  resonance:{sheet:effectSheet("crit-hit",216,136,5,28,84,89),duration:.62,scale:1.08},
+  blast:{sheet:effectSheet("plasma-explosion",224,200,7,52,112,100),duration:.80,scale:1.43},
+  fever:{sheet:effectSheet("mana-burst",208,150,7,55,104,95),duration:1.05,scale:1.76},
 };
 // Visual effects are paced by the animation clock and never consume roll RNG.
 function impactPrint(x,y,kind) {
@@ -2388,15 +2405,32 @@ function drawImpactPrints() {
     if (!sheet.image.naturalWidth) continue;
     const progress = (time-effect.start)/duration;
     const frame = Math.min(sheet.frames-1,Math.floor(progress*sheet.frames));
-    const size = unit*scale;
+    const size = Math.min(Math.max(.77,unit)*scale,Math.min(board.w,board.h)*.92/sheet.frameWidth);
     const coins = effect.kind==="coins";
-    const y = effect.y-(coins ? (12+24*progress)*unit : 0);
+    const y = effect.y-(coins ? (17+34*progress)*unit : 0);
+    drawImpactHalo(effect.kind,effect.x,effect.y,progress);
     ctx.globalAlpha = coins ? Math.min(1,(1-progress)*4) : 1;
     ctx.drawImage(sheet.image,frame%sheet.columns*sheet.frameWidth,
       Math.floor(frame/sheet.columns)*sheet.frameHeight,sheet.frameWidth,sheet.frameHeight,
       effect.x-sheet.pivotX*size,y-sheet.pivotY*size,sheet.frameWidth*size,sheet.frameHeight*size);
   }
   ctx.restore();
+}
+function drawImpactHalo(kind,x,y,progress) {
+  const styles = {coins:[23,"#ffcb63"],resonance:[53,"#ffe3a1"],blast:[74,"#ff9570"],fever:[105,"#ffdb82"]};
+  const style = styles[kind];
+  if (!style || progress>=.74) return;
+  const [extent,color] = style;
+  const reach=Math.min(extent*Math.max(unit,.78),Math.min(board.w,board.h)*.38);
+  const radius=reach*(.22+.78*progress/.74);
+  ctx.globalAlpha=(1-progress/.74)*.74;
+  ctx.strokeStyle=color;
+  ctx.lineWidth=Math.max(1.5,3*unit*(1-progress));
+  ctx.beginPath(); ctx.ellipse(x,y,radius,radius*.64,0,0,Math.PI*2); ctx.stroke();
+  ctx.globalAlpha*=.55;
+  ctx.lineWidth=Math.max(1,unit);
+  ctx.beginPath(); ctx.ellipse(x,y,radius*.76,radius*.47,0,0,Math.PI*2); ctx.stroke();
+  ctx.globalAlpha=1;
 }
 function drawRollTrail(die) {
   if (!die.trail?.length || reducedMotion.matches) return;
@@ -2478,10 +2512,10 @@ function drawResonance(showResult) {
   const points = partners.map(dieCenter);
   ctx.save();
   if (!showResult) {
-    ctx.strokeStyle="#ffe3a1";
-    ctx.lineWidth=2*unit;
     for (const point of points) {
-      ctx.beginPath(); ctx.moveTo(center.x,center.y); ctx.lineTo(point.x,point.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(center.x,center.y); ctx.lineTo(point.x,point.y);
+      ctx.strokeStyle="#ffc86767"; ctx.lineWidth=9*unit; ctx.stroke();
+      ctx.strokeStyle="#fff0b6"; ctx.lineWidth=3*unit; ctx.stroke();
     }
   } else {
     for (const die of [event.die,...partners]) {
@@ -2489,7 +2523,8 @@ function drawResonance(showResult) {
       const left=Math.min(...corners.map(p=>p.x)), top=Math.min(...corners.map(p=>p.y));
       const right=Math.max(...corners.map(p=>p.x)), bottom=Math.max(...corners.map(p=>p.y));
       rounded(ctx,left-3,top-3,right-left+6,bottom-top+6,6);
-      ctx.strokeStyle="#ffe3a1"; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.strokeStyle="#b87133"; ctx.lineWidth=4; ctx.stroke();
+      ctx.strokeStyle="#fff0ae"; ctx.lineWidth=2; ctx.stroke();
     }
     const label=event.face+"がそろった　＋"+format(event.amount)+"コイン";
     ctx.font="bold 14px 'Toy Rounded','BIZ UDPGothic',sans-serif";
