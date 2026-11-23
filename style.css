@@ -467,3 +467,87 @@ canvas{border-radius:0;image-rendering:pixelated}
 @media(prefers-reduced-motion:no-preference){
   .game button,.game .skill-node{transition-timing-function:steps(3,end)}
 }
+/* Timber cabinet and stamped brass. Border slices keep the corner pixels fixed. */
+:root{
+  --cabinet-outline:#29242b;--cabinet-gold:#ddb073;--cabinet-shadow:#3a2925;
+  --cabinet-paper:#f4e3bc;--cabinet-brown:#533729;--cabinet-red:#8d4036;
+  --cabinet-wood:url("art/cabinet-wood.png");
+  --cabinet-frame:url("art/cabinet-frame.png");
+}
+body{background:#503729 var(--cabinet-wood) repeat;image-rendering:pixelated}
+.masthead{
+  background:linear-gradient(90deg,#281e2399,#35252065 53%,#281e2399),var(--cabinet-wood) #372823;
+  border-bottom:4px solid #241e24;box-shadow:inset 0 -2px #b08152,0 3px #251e24;
+}
+h1{color:#fff0cf;text-shadow:0 2px #241c21}
+.masthead .save-status{color:#efe0bd}
+.masthead .save-status i{background:#b6ca88}
+.balance{background:#f1ddad;border:2px solid #1f212a;color:#252d37;box-shadow:inset 0 2px #fff2cc,inset 0 -2px #b38a59,0 3px #231c22}
+.balance-icon{background:transparent url("art/cabinet-coin.png") center/contain no-repeat;border:0;box-shadow:none;image-rendering:pixelated}
+.balance-icon svg{display:none}
+.sound,#roll-button{background:#51392e;color:#fff2ce;border:2px solid #281f26;box-shadow:inset 0 2px #ad8053,inset 0 -2px #33252a,0 3px #291e24}
+.sound:hover,#roll-button:hover{background:#6b4934}
+.stage,.stage[data-skin],.panel,.skills-open .panel{
+  border:6px solid #382720;border-image:var(--cabinet-frame) 7 stretch;
+  border-radius:0;box-shadow:0 5px #261c23;
+}
+.stage,.stage[data-skin]{background:#273844}
+.stage-top,.stage-bottom{background:#303f48;border-color:#647374}
+.stage-top{box-shadow:inset 0 -2px #232f39}
+.stage-bottom{box-shadow:inset 0 2px #23303b}
+.panel,.skills-open .panel{background:var(--cabinet-paper);color:#2b2e35}
+.tabs,.skills-open .tabs{
+  background:#503729 var(--cabinet-wood);padding:5px 4px 0;gap:3px;
+  border-bottom:3px solid #382820;
+}
+.tabs button,.skills-open .tabs button{
+  background:#e4c595;color:#392b28;border:2px solid #382820;border-bottom:0;
+  border-radius:0;box-shadow:inset 0 2px #f5dba6,inset 0 -2px #a97d54;
+}
+.tabs button[aria-selected=true],.skills-open .tabs button[aria-selected=true]{
+  background:#3d5758;color:#fff0ca;border-color:#242830;box-shadow:inset 0 2px #7b9790;
+}
+.tabs button:hover,.skills-open .tabs button:hover{background:#f3d9a8;color:#392b28}
+#shop .panel-heading,#enhance .panel-heading,#stats .panel-heading,#collection .panel-heading{
+  border-bottom:3px double #875b40;
+}
+.panel-content,.panel-footer{background:#f3e3be}
+.upgrade,.upgrade:has(.buy:not(:disabled)){
+  border-bottom:1px solid #a78660;box-shadow:0 1px #ffefd1;
+}
+.upgrade-icon,.upgrade[data-kind=tree] .upgrade-icon{
+  background-color:#e9cd9d;border:2px solid #654531;box-shadow:inset 0 2px #f9e6b8,0 2px #b1855a;
+}
+.buy:not(:disabled),.skill-entry button,.skill-detail-offer button:not(:disabled),#skill-detail-dialog .skill-detail-offer button:not(:disabled){
+  background:var(--cabinet-red);color:#fff3d5;border:2px solid #462a2b;
+  border-radius:0;box-shadow:inset 0 2px #c58061,inset 0 -2px #683631,0 3px #4b2c29;
+}
+.buy:disabled,.skill-detail-offer button:disabled{background:#f5e7c6;color:#783d38;border:1px solid #a77b5e;box-shadow:inset 0 1px #ffefcf}
+.game button:active:not(:disabled),#skill-detail-dialog button:active:not(:disabled){transform:translateY(2px);box-shadow:inset 0 2px #472e28}
+.shop-goal,.milestone-card,.journal-link,.collection-entry,.skin-choice,.mastery-goal{
+  border:2px solid #9d794f;border-radius:0;background:#f7e8c4;box-shadow:inset 0 2px #fff1d1,0 2px #ad8a5c66;
+}
+.panel-footer,.skills-open .panel-footer{background:#e5c99d;border-top:3px double #987148;color:#473322}
+.skills-open .panel-footer button{color:#633b2b}
+.skill-chart,.skill-entry,.skill-inspector,#skill-detail-dialog{
+  border:6px solid #62412f;border-image:var(--cabinet-frame) 7 stretch;border-radius:0;background:#f7e7c1;
+}
+.skill-chart-bar{background:#e9cda0;border-color:#916946}
+.skill-map{
+  background-color:#edddb7;
+  background-image:radial-gradient(circle,#85684b52 1px,transparent 1.3px);
+  background-size:12px 12px;
+}
+.skill-node[data-state]{
+  border-radius:0;box-shadow:inset 0 2px #fff0c6,0 3px #78593d;
+}
+.skill-node[data-state=learned]{background:#d3dfb9}
+.skill-node[data-state=ready]{background:#ffe6ae;box-shadow:inset 0 2px #fff4c9,0 3px #8b562d}
+.first-roll-hint,.notice,#purchase-receipt{border-radius:0;box-shadow:inset 0 2px #fff6d649,3px 3px #29242ba0}
+.first-roll-hint{border-color:#3a2b2a;background:#f8e7b9}
+.first-roll-hint::before{border-color:#3a2b2a}
+@media(max-width:780px){
+  .stage,.stage[data-skin],.panel,.skills-open .panel{border-width:5px}
+  .tabs,.skills-open .tabs{gap:2px;padding-inline:3px}
+  .tabs button,.skills-open .tabs button{padding-inline:3px}
+}

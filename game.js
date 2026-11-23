@@ -3,9 +3,9 @@
 const byId = id => document.getElementById(id);
 const canvas = byId("table");
 const screenCtx = canvas.getContext("2d");
-// Keep interaction and physics in CSS pixels. Only the artwork uses a low-resolution buffer.
+// Keep interaction and physics in CSS pixels. Artwork is drawn on a one-CSS-pixel grid.
 const pixelScene = document.createElement("canvas");
-const pixelScale = .5;
+const pixelScale = 1;
 const pixelCtx = pixelScene.getContext("2d");
 let ctx = pixelCtx;
 const backdrop = document.createElement("canvas");
@@ -1951,16 +1951,33 @@ function seededRandom(seed) {
 }
 function createFeltPattern() {
   const tile = document.createElement("canvas");
-  tile.width = tile.height = 256;
+  tile.width = tile.height = 96;
   const brush = tile.getContext("2d");
-  const noise = seededRandom(551);
-  for (let i=0;i<tile.width*tile.height*.1;i++) {
-    brush.fillStyle = i%2 ? "#eff6ed24" : "#24374a29";
-    brush.fillRect(noise()*tile.width,noise()*tile.height,.5+noise(),.7);
+  const grain = seededRandom(551);
+  for (let y=0;y<96;y+=2) {
+    for (let x=0;x<96;x+=3) {
+      if (grain()<.42) continue;
+      brush.fillStyle = grain()<.48 ? "#e6efd51c" : "#182d3e25";
+      brush.fillRect(x+y%3,y,grain()<.23 ? 2 : 1,1);
+    }
   }
   return backdropCtx.createPattern(tile,"repeat");
 }
 const feltPattern = createFeltPattern();
+function pixelPolygon(g,points,fill) {
+  g.beginPath();
+  points.forEach(([x,y],i)=>{
+    if (i) g.lineTo(Math.round(x),Math.round(y));
+    else g.moveTo(Math.round(x),Math.round(y));
+  });
+  g.closePath();
+  g.fillStyle=fill; g.fill();
+}
+function pixelFrame(g,x,y,w,h,cut,fill) {
+  const c = Math.min(cut,w/2,h/2);
+  pixelPolygon(g,[[x+c,y],[x+w-c,y],[x+w-c,y+1],[x+w,y+1],[x+w,y+h-1],
+    [x+w-c,y+h-1],[x+w-c,y+h],[x+c,y+h],[x+c,y+h-1],[x,y+h-1],[x,y+1],[x+c,y+1]],fill);
+}
 function applySkin() {
   const skin = skins[state.skin].id;
   feverStage.dataset.skin = skin;
@@ -1974,41 +1991,38 @@ function paintTable() {
   const skin = skins[state.skin], noise = seededRandom(551);
   g.setTransform(pixelScale,0,0,pixelScale,0,0);
   g.clearRect(0,0,width,height);
-  function finish(left,top,wide,tall,r,fill,line=2) {
-    rounded(g,left,top,wide,tall,r);
-    g.fillStyle=fill; g.fill();
-    g.strokeStyle="#233346"; g.lineWidth=line; g.stroke();
+  const border="#252b34", inset=2;
+  pixelFrame(g,o.x-1,o.y+depth+3,o.w+2,o.h,5,"#121d26");
+  pixelFrame(g,o.x,o.y+depth,o.w,o.h,5,border);
+  pixelFrame(g,o.x+2,o.y+depth+1,o.w-4,o.h-3,4,"#654337");
+  pixelFrame(g,o.x,o.y,o.w,o.h,5,border);
+  pixelFrame(g,o.x+2,o.y+2,o.w-4,o.h-4,4,"#a97550");
+  pixelFrame(g,o.x+3,o.y+3,o.w-6,o.h-8,3,"#cc9a64");
+  g.fillStyle="#f0c487"; g.fillRect(Math.round(o.x+6),Math.round(o.y+3),Math.round(o.w-12),1);
+  g.fillStyle="#82523e"; g.fillRect(Math.round(o.x+6),Math.round(o.y+o.h-5),Math.round(o.w-12),2);
+
+  // Short, stepped grain runs follow the rails, leaving the weave quiet under the dice.
+  for (let i=0;i<Math.floor(o.w*.29);i++) {
+    const px=Math.round(o.x+7+noise()*(o.w-30));
+    const py=Math.round((i%2 ? o.y+5 : y+h+3)+noise()*Math.max(1,board.rail-9));
+    const length=Math.round(4+noise()*17);
+    g.fillStyle=i%3===0 ? "#d9ab73" : "#b38458";
+    g.fillRect(px,py,length,1); g.fillRect(px+length,py+1,3,1);
   }
-  finish(o.x,o.y+depth,o.w,o.h,16,"#8a5c40",3);
-  finish(o.x,o.y,o.w,o.h,16,gradient(g,o.x,o.y,o.x,o.y+o.h,[[0,"#e3bc8b"],[1,"#b17d55"]]),3);
-  g.save();
-  g.clip();
-  for (let i=0;i<230;i++) {
-    const at=o.y+noise()*o.h;
-    g.beginPath(); g.moveTo(o.x,at);
-    g.bezierCurveTo(o.x+o.w*.3,at-4*noise(),o.x+o.w*.75,at+8*noise(),o.x+o.w,at);
-    g.strokeStyle=i%3 ? "#55402a27" : "#fff1ce53";
-    g.lineWidth=.4+noise(); g.stroke();
+  pixelFrame(g,x-inset,y-inset,w+4,h+4,4,border);
+  pixelFrame(g,x,y,w,h,3,skin.felt[2]);
+  pixelFrame(g,x+2,y+3,w-4,h-5,3,skin.felt[1]);
+  g.fillStyle=skin.felt[0]; g.fillRect(Math.round(x+5),Math.round(y+3),Math.round(w-10),2);
+  g.fillStyle=feltPattern; g.fillRect(Math.round(x+4),Math.round(y+5),Math.round(w-8),Math.round(h-9));
+
+  for (const [ox,oy] of [[x+12,y+13],[x+w-15,y+13],[x+w-15,y+h-15]]) {
+    g.fillStyle="#273d47"; g.fillRect(Math.round(ox),Math.round(oy),4,4);
+    g.fillStyle="#c0a779"; g.fillRect(Math.round(ox+1),Math.round(oy+1),2,2);
   }
-  g.restore();
-  finish(x,y,w,h,4,skin.felt[1]);
-  g.save(); g.clip();
-  g.fillStyle = skin.felt[0];
-  g.fillRect(x,y,w,6);
-  g.fillStyle = skin.felt[2];
-  g.fillRect(x,y+h-8,w,8);
-  g.fillStyle = feltPattern;
-  g.fillRect(x,y,w,h);
-  rounded(g,x+5,y+5,w-10,h-10,6);
-  g.strokeStyle="#dce5df62"; g.lineWidth=1; g.stroke();
-  g.restore();
-  g.save();
-  g.translate(x+10,y+h-28); g.rotate(-.16);
-  g.beginPath(); g.moveTo(-12,-8); g.lineTo(27,-8); g.lineTo(25,-1);
-  g.lineTo(28,7); g.lineTo(-12,8); g.lineTo(-10,1); g.closePath();
-  g.fillStyle="#c9b58a"; g.fill();
-  g.strokeStyle="#7e7357"; g.lineWidth=1; g.stroke();
-  g.restore();
+  const tapeX=Math.round(x-3), tapeY=Math.round(y+h-29);
+  pixelPolygon(g,[[tapeX,tapeY+4],[tapeX+9,tapeY+4],[tapeX+9,tapeY+2],[tapeX+27,tapeY],
+    [tapeX+29,tapeY+9],[tapeX+15,tapeY+11],[tapeX+2,tapeY+13]],"#bfab7d");
+  g.fillStyle="#e3cea0"; g.fillRect(tapeX+4,tapeY+5,15,1); g.fillRect(tapeX+9,tapeY+8,15,1);
 }
 function diamond(g,x,y,r,color) {
   g.beginPath();g.moveTo(x,y-r);g.lineTo(x+r,y);g.lineTo(x,y+r);g.lineTo(x-r,y);g.closePath();
@@ -2074,23 +2088,25 @@ function drawDie(die,preset = null) {
     ctx.save();
     ctx.transform(ux,uy,vx,vy,p.x,p.y);
     if (bright) {
+      ctx.fillStyle = "#fff7dc97";
+      ctx.fillRect(.08,.07,.84,.043);
+      ctx.fillRect(.07,.11,.044,.76);
+      ctx.fillStyle = material.low;
+      ctx.fillRect(.12,.87,.76,.045);
+      ctx.fillRect(.87,.18,.044,.69);
       if (rank===0) {
-        ctx.strokeStyle="#89613830"; ctx.lineWidth=.012;
-        for (let i=1;i<6;i++) {
-          const y=i/7;
-          ctx.beginPath(); ctx.moveTo(.08,y); ctx.quadraticCurveTo(.5,y-.07,.92,y); ctx.stroke();
+        ctx.fillStyle="#9e70482b";
+        for (let i=1;i<=5;i++) {
+          const y=i*.14, x=i%2 ? .13 : .42;
+          ctx.fillRect(x,y,.27,.025);
+          ctx.fillRect(x+.27,y+.025,.11,.024);
         }
-      }
-      ctx.strokeStyle = special?.color ?? (stars>1 || rank===3 ? "#fff4bc" : "#fff4d9ae");
-      ctx.lineWidth = .026;
-      ctx.beginPath();ctx.moveTo(.08,.86);ctx.lineTo(.08,.09);ctx.lineTo(.86,.09);ctx.stroke();
-      if (rank===2) {
-        ctx.strokeStyle="#40576450";ctx.lineWidth=.012;
-        ctx.beginPath();
-        for (let i=0;i<5;i++) {
-          ctx.moveTo(.12,.22+i*.13);ctx.lineTo(.88,.18+i*.13);
-        }
-        ctx.stroke();
+      } else {
+        ctx.fillStyle = rank===1 ? "#ffe0b875" : "#ffffed89";
+        ctx.fillRect(.18,.21,.39,.034);
+        ctx.fillRect(.52,.25,.24,.035);
+        ctx.fillStyle = material.low;
+        ctx.fillRect(.46,.75,.34,.033);
       }
     }
     if (special) {
@@ -2111,10 +2127,16 @@ function drawDie(die,preset = null) {
     }
     for (const [dx,dy] of pips[value]) {
       const x=.5+dx*.237, y=.5+dy*.237, radius=value===1 ? .105 : .082;
-      ctx.beginPath();ctx.arc(x,y+.014,radius,0,Math.PI*2);
-      ctx.fillStyle = bright ? "#fff7cf70" : "#ffedb44d";ctx.fill();
-      ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);
-      ctx.fillStyle=rank===0 && value===1 ? "#a6382d" : material.pip;ctx.fill();
+      const pip = rank===0 && value===1 ? "#9c3b31" : material.pip;
+      const flat = radius*.57;
+      ctx.beginPath();
+      ctx.moveTo(x-flat,y-radius); ctx.lineTo(x+flat,y-radius);
+      ctx.lineTo(x+radius,y-flat); ctx.lineTo(x+radius,y+flat);
+      ctx.lineTo(x+flat,y+radius); ctx.lineTo(x-flat,y+radius);
+      ctx.lineTo(x-radius,y+flat); ctx.lineTo(x-radius,y-flat); ctx.closePath();
+      ctx.fillStyle=pip; ctx.fill();
+      ctx.fillStyle=rank===0 && value===1 ? "#d87f58" : "#c9b99587";
+      ctx.fillRect(x-flat,y+flat,flat*2,.022);
     }
     ctx.restore();
   }
@@ -2158,17 +2180,31 @@ function drawArm(arm,index) {
   const bend = (13+Math.sin(reach*Math.PI)*30)*unit;
   const elbowX=index===0 && !arm.sweep ? x-15*unit : (x+tipX)*.5-Math.sin(dir)*bend;
   const elbowY=index===0 && !arm.sweep ? y-65*unit : (y+tipY)*.5+Math.cos(dir)*bend;
-  rounded(ctx,x-26*unit,y-8*unit,52*unit,27*unit,6*unit);
-  ctx.fillStyle="#899da4"; ctx.fill(); ctx.strokeStyle="#233346"; ctx.lineWidth=3*unit; ctx.stroke();
-  ctx.lineJoin="round";ctx.lineCap="round";
-  for (const [thickness,color,offset] of [[22,"#263d51ad",5],[20,"#233346",0],[15,"#a1b0b4",0],[4,"#d9e0d9",-3]]) {
-    ctx.beginPath();ctx.moveTo(x,y+offset*unit);ctx.lineTo(elbowX,elbowY+offset*unit);ctx.lineTo(tipX,tipY+offset*unit);
-    ctx.strokeStyle=color;ctx.lineWidth=thickness*unit;ctx.stroke();
+  pixelFrame(ctx,x-26*unit,y-8*unit,52*unit,28*unit,4,"#222d38");
+  pixelFrame(ctx,x-23*unit,y-6*unit,46*unit,22*unit,3,"#536d76");
+  pixelFrame(ctx,x-23*unit,y-6*unit,46*unit,15*unit,3,"#87a0a0");
+  function strut(ax,ay,bx,by) {
+    const length=Math.hypot(bx-ax,by-ay);
+    ctx.save();
+    ctx.translate(Math.round(ax),Math.round(ay));
+    ctx.rotate(Math.atan2(by-ay,bx-ax));
+    const layers = [[-9,18,"#263441"],[-7,14,"#536975"],[-6,9,"#9eb0ad"],[-6,2,"#d6d9bd"]];
+    for (const [top,tall,color] of layers) {
+      ctx.fillStyle=color;
+      ctx.fillRect(-2*unit,top*unit,length+4*unit,tall*unit);
+    }
+    ctx.fillStyle="#bbc7b6"; ctx.fillRect(length*.35,-2*unit,length*.3,unit);
+    ctx.restore();
   }
-  for (const [px,py,r] of [[x,y,12],[elbowX,elbowY,6],[tipX,tipY,5]]) {
-    ctx.beginPath();ctx.arc(px,py,r*unit,0,Math.PI*2);
-    ctx.fillStyle="#9eafb4";ctx.fill();ctx.strokeStyle="#233346";ctx.lineWidth=1.5*unit;ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(px-r*.58*unit,py+r*.26*unit); ctx.lineTo(px+r*.58*unit,py-r*.26*unit); ctx.stroke();
+  strut(x,y,elbowX,elbowY);
+  strut(elbowX,elbowY,tipX,tipY);
+  for (const [px,py,r] of [[x,y,10],[elbowX,elbowY,7],[tipX,tipY,5],
+    [x-17*unit,y+6*unit,3],[x+17*unit,y+6*unit,3]]) {
+    const size=r*unit;
+    pixelFrame(ctx,px-size,py-size,size*2,size*2,3,"#263441");
+    pixelFrame(ctx,px-size+2,py-size+2,size*2-4,size*2-4,2,"#9cadaa");
+    ctx.fillStyle="#526976";
+    ctx.fillRect(Math.round(px-size*.53),Math.round(py),Math.max(1,Math.round(size*1.06)),2);
   }
   ctx.save();
   ctx.translate(tipX,tipY);
@@ -2268,12 +2304,10 @@ function drawPopup(popup) {
   ctx.font="800 "+amountSize+"px 'Toy Rounded','BIZ UDPGothic',sans-serif";
   const label="＋"+short(popup.amount);
   const badgeWidth = Math.min(maxWidth,ctx.measureText(label).width+14*unit);
-  rounded(ctx,x-badgeWidth/2,y-amountSize*.65,badgeWidth,amountSize*1.32,amountSize*.48);
-  ctx.fillStyle = popup.crit ? "#10473e" : "#452e20";
-  ctx.fill();
-  ctx.strokeStyle = popup.crit ? "#65e5bf" : "#dfa343";
-  ctx.lineWidth = unit;
-  ctx.stroke();
+  const top=y-amountSize*.68, tall=amountSize*1.38;
+  pixelFrame(ctx,x-badgeWidth/2,top,badgeWidth,tall,3,"#272632");
+  pixelFrame(ctx,x-badgeWidth/2+1,top+1,badgeWidth-2,tall-2,2,popup.crit ? "#d3bf6f" : "#cb9559");
+  pixelFrame(ctx,x-badgeWidth/2+2,top+2,badgeWidth-4,tall-4,2,popup.crit ? "#314b44" : "#533933");
   ctx.strokeStyle = "#362717";
   ctx.strokeText(label,x,y,maxWidth);
   ctx.fillStyle=popup.burst ? "#ffe48b" : popup.fever ? "#fff0ad" : popup.crit ? "#c7ffcc" : "#ffe4a1";
@@ -2484,9 +2518,10 @@ function drawResonance(showResult) {
       ctx.restore();
       return label;
     } else {
-      rounded(ctx,position.x-labelW/2,position.y-labelH/2,labelW,labelH,6);
-      ctx.fillStyle="#f8e8b9"; ctx.fill();
-      ctx.strokeStyle="#283749"; ctx.lineWidth=2; ctx.stroke();
+      const left=position.x-labelW/2, top=position.y-labelH/2;
+      pixelFrame(ctx,left,top,labelW,labelH,4,"#302931");
+      pixelFrame(ctx,left+1,top+1,labelW-2,labelH-2,3,"#c18e50");
+      pixelFrame(ctx,left+2,top+2,labelW-4,labelH-5,2,"#f9e7b5");
       ctx.textAlign="center"; ctx.textBaseline="middle";
       ctx.fillStyle="#613923"; ctx.fillText(label,position.x,position.y,labelW-12);
     }
@@ -2575,7 +2610,7 @@ function draw() {
   }
   ctx.restore();
 
-  // Composite with nearest-neighbor sampling, then draw the Japanese result labels at display resolution.
+  // Keep Japanese result labels crisp at the physical display resolution.
   screenCtx.clearRect(0,0,width,height);
   screenCtx.drawImage(pixelScene,0,0,width,height);
   ctx = screenCtx;
