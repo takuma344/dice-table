@@ -20,7 +20,7 @@ const caps = {dice:40, material:3, arms:6, speed:7, wave:8, baseIncome:12, quali
 const TREE_PRICE = 1000;
 const SAVE_VERSION = 3;
 const LEGACY_CHIP_VALUE = 250;
-const MATERIAL_PRICES = [85,900,6200];
+const MATERIAL_PRICES = [85,1250,8200];
 const SPECIAL_DICE = {
   blast:{ink:"#ae4731",stamp:"M12 1 14 7 20 4 18 10 23 12 17 14 19 21 13 17 9 23 8 17 2 18 6 12 1 8 8 8Z",skill:"specialBlast",name:"爆裂ダイス",mark:"爆",icon:"wave",color:"#ff9d63",cost:800,detail:"出目5・6で周囲に爆裂波を放つ"},
   aura:{ink:"#236c71",stamp:"M3 3H9V13Q9 17 12 17Q15 17 15 13V3H21V14Q21 23 12 23Q3 23 3 14Z",skill:"specialAura",name:"増幅ダイス",mark:"増",icon:"gem",color:"#90eed0",cost:1150,detail:"静止中、近くの他のダイスの配当を25%増やす"},
@@ -51,7 +51,7 @@ const STAR_RANKS = [
   {pay:6.9,size:1.26,pulse:.205,targets:2,match:.36,heat:8,color:"#a4ffe4"},
   {pay:18,size:1.40,pulse:.29,targets:4,match:.52,heat:14,color:"#ffd296"},
 ];
-const MERGE_PRICES = [12,175,1800];
+const MERGE_PRICES = [12,230,2450];
 const MERGE_MATERIAL_FACTORS = [1,2.4,6,14];
 const MAX_STARS = STAR_RANKS.length;
 const FUSION_IMPACT = .40;
@@ -95,9 +95,9 @@ const MILESTONE_GROUPS = [
 const MILESTONE_IDS = new Set(MILESTONE_GROUPS.flatMap(group=>group.targets.map((_,index)=>group.id+"-"+index)));
 const MILESTONE_REWARDS = {income:"獲得コイン",resonance:"共鳴ボーナス",fever:"フィーバー充填"};
 const SPECIAL_CAP_COSTS = {
-  blast:[2900,19000,80000,390000,1950000],
-  aura:[3500,27000,115000,570000,2900000],
-  heat:[3200,22000,96000,490000,2400000],
+  blast:[3600,27000,105000,480000,2250000],
+  aura:[4600,38000,150000,690000,3350000],
+  heat:[4200,31000,125000,600000,2750000],
 };
 const SPECIAL_PATHS = {
   blast:{lane:"arms",at:[6,4],requires:{wave:1}},
@@ -107,41 +107,41 @@ const SPECIAL_PATHS = {
 const talents = [
   {id:"quality",lane:"dice",at:[1,2,2],icon:"die",title:"ダイス品質",costs:[1200],requires:{tree:1},
     detail:()=>"「ダイス品質」を強化に追加。出目5・6の配当を伸ばす"},
-  {id:"material",lane:"dice",at:[1,3],icon:"gem",title:"材質加工",costs:[2200,24000,320000],requires:{quality:1},
+  {id:"material",lane:"dice",at:[1,3],icon:"gem",title:"材質加工",costs:[2700,34000,410000],requires:{quality:1},
     progress:(n,s)=>n>1 ? materialRequirement(n-1,s) : null,
     detail:n=>materials[n].name+"までの材質進化を強化に追加"},
-  {id:"materialStart",lane:"dice",at:[1,4],icon:"die",title:"材質の下地",costs:[12500,165000],requires:n=>({material:n}),
+  {id:"materialStart",lane:"dice",at:[1,4],icon:"die",title:"材質の下地",costs:[17500,220000],requires:n=>({material:n}),
     progress:(n,s)=>materialRequirement(n,s),
     detail:n=>"新しく購入する通常ダイスは"+materials[n].name+"から開始"},
-  {id:"merge",lane:"dice",at:[2,3],icon:"gem",title:"ダイス合成",costs:[2500],requires:{quality:1},
+  {id:"merge",lane:"dice",at:[2,3],icon:"gem",title:"ダイス合成",costs:[3200],requires:{quality:1},
     progress:(_,s)=>progressRequirement("ダイス（合成前換算）",dicePriceBasis(s),2),
     detail:()=>"同じ材質・星の通常ダイス2個を合成できる"},
-  {id:"income",lane:"roll",at:[3,4],icon:"coin",title:"配当アップ",costs:[3200,12500,90000,600000],requires:{resonance:1},
+  {id:"income",lane:"roll",at:[3,4],icon:"coin",title:"配当アップ",costs:[4200,18000,125000,750000],requires:{resonance:1},
     progress:(n,s)=>progressRequirement("基礎収益アップ Lv.",s.baseIncome,[0,3,5,7][n-1]),
     detail:n=>"基礎配当 ＋"+20*n+"%"},
   {id:"match",lane:"roll",at:[3,2,2],icon:"wave",title:"共鳴",costs:[1000],requires:{tree:1},
     detail:()=>"近いタイミングに同じ目が出ると共鳴する"},
-  {id:"resonance",lane:"roll",at:[3,3],icon:"wave",title:"共鳴配当",costs:[2600,16500,135000],requires:{match:1},
+  {id:"resonance",lane:"roll",at:[3,3],icon:"wave",title:"共鳴配当",costs:[3300,24000,175000],requires:{match:1},
     progress:(n,s)=>progressRequirement("最大共鳴コンボ",s.best,[0,3,6][n-1]),
     detail:n=>"共鳴ボーナス ＋"+25*n+"%"},
-  {id:"feverMode",lane:"roll",at:[4,3],icon:"speed",title:"フィーバー",costs:[3800],requires:{match:1},
+  {id:"feverMode",lane:"roll",at:[4,3],icon:"speed",title:"フィーバー",costs:[4800],requires:{match:1},
     progress:(_,s)=>progressRequirement("累計共鳴",s.resonances,3),
     detail:()=>"共鳴などで充填するフィーバーゲージを追加"},
-  {id:"fever",lane:"roll",at:[4,4],icon:"speed",title:"熱気の蓄積",costs:[6000,42000,330000],requires:{feverMode:1},
+  {id:"fever",lane:"roll",at:[4,4],icon:"speed",title:"熱気の蓄積",costs:[7800,57000,410000],requires:{feverMode:1},
     progress:(n,s)=>progressRequirement("フィーバー発動",s.feverStarts,[1,4,12][n-1]),
     detail:n=>"共鳴によるゲージ充填 ＋"+20*n+"%"},
   {id:"wave",lane:"arms",at:[6,2],icon:"wave",title:"手動衝撃波",costs:[1400],requires:{tree:1},
     detail:()=>"「テーブル衝撃波」を強化に追加"},
   {id:"arms",lane:"arms",at:[5,2],icon:"arm",title:"ロボットアーム",costs:[1800],requires:{tree:1},
     detail:()=>"「ロボットアーム」を強化に追加"},
-  {id:"speed",lane:"arms",at:[5,3],icon:"speed",title:"アーム速度",costs:[3600],requires:{arms:1},
+  {id:"speed",lane:"arms",at:[5,3],icon:"speed",title:"アーム速度",costs:[4600],requires:{arms:1},
     progress:(_,s)=>progressRequirement("アーム雇用",s.arms,1),
     detail:()=>"「アーム速度」を強化に追加"},
-  {id:"chain",lane:"arms",at:[5,4],icon:"arm",title:"近接ダイス連鎖",costs:[6500,52000,390000],requires:{speed:1},
+  {id:"chain",lane:"arms",at:[5,4],icon:"arm",title:"近接ダイス連鎖",costs:[8500,69000,480000],requires:{speed:1},
     progress:(n,s)=>[progressRequirement("アーム雇用",s.arms,1),
       progressRequirement("ダイス（合成前換算）",dicePriceBasis(s),[3,5,8][n-1])],
     detail:n=>n+" 段まで連鎖し、1作動につき最大 "+2*n+" 個を追加で投擲"},
-  {id:"armWave",lane:"arms",at:[5,5,2],icon:"wave",title:"アーム衝撃波",costs:[240000],requires:{chain:2,wave:1},
+  {id:"armWave",lane:"arms",at:[5,5,2],icon:"wave",title:"アーム衝撃波",costs:[310000],requires:{chain:2,wave:1},
     progress:(_,s)=>progressRequirement("テーブル衝撃波 Lv.",s.wave,1),
     detail:()=>"アームの主投擲で衝撃波を1回発生。衝撃波Lv.で範囲が広がる"},
   ...Object.entries(SPECIAL_DICE).map(([type,special])=>({
@@ -160,17 +160,17 @@ const upgrades = [
   {key:"tree",shop:true,icon:"gem",title:"スキルツリー解放",action:"解放",cost:()=>TREE_PRICE,
     detail:()=>"共鳴・材質加工・自動化などのスキルを解放できる"},
   {key:"baseIncome",icon:"coin",title:"基礎収益アップ",action:"強化",
-    cost:s=>[30,105,300,760][s.baseIncome] ?? 1800*2.65**(s.baseIncome-4),
+    cost:s=>[30,105,300,760][s.baseIncome] ?? 2250*2.75**(s.baseIncome-4),
     detail:s=>"Lv. "+s.baseIncome+" · 基礎配当 ＋"+35*s.baseIncome+"%（1Lv.ごとに＋35%）"},
   {key:"quality",skill:"quality",icon:"die",title:"ダイス品質",action:"強化",cost:s=>150*2.5**s.quality,
     detail:s=>"Lv. "+s.quality+" · 出目5・6の配当 ＋"+15*s.quality+"%"},
   {key:"material",skill:"material",icon:"gem",title:"ダイスの材質",action:"1個進化"},
-  {key:"arms",skill:"arms",icon:"arm",title:"ロボットアーム",action:"雇用",cost:s=>420*3.25**s.arms,
+  {key:"arms",skill:"arms",icon:"arm",title:"ロボットアーム",action:"雇用",cost:s=>420*3.55**s.arms,
     detail:s=>s.arms+" / 6 基 · "+(s.talents.armWave ? "主投擲で衝撃波" : s.talents.chain ? "1個を投擲し、近くへ連鎖" : "1作動につきダイス1個")},
-  {key:"speed",skill:"speed",icon:"speed",title:"アーム速度",action:"強化",cost:s=>650*2.45**s.speed,
+  {key:"speed",skill:"speed",icon:"speed",title:"アーム速度",action:"強化",cost:s=>650*2.7**s.speed,
     detail:s=>s.arms ? "Lv. "+s.speed+" · "+armInterval().toFixed(1)+" 秒ごとに作動" : "ロボットアームを雇うと解放"},
   {key:"wave",skill:"wave",icon:"wave",title:"テーブル衝撃波",action:s=>s.wave ? "強化" : "有効化",
-    cost:s=>s.wave<2 ? [240,690][s.wave] : 1600*2.25**(s.wave-2),
+    cost:s=>s.wave<2 ? [240,820][s.wave] : 2100*2.4**(s.wave-2),
     detail:s=>s.wave ? "Lv. "+s.wave+" · 手動で短辺の "+(waveRange(s.wave)*100).toFixed(1).replace(/\.0$/,"")+"% まで巻き込む" :
       "Lv. 0 · 近くのダイスも一緒に振れる"},
 ];
@@ -213,12 +213,14 @@ function dicePurchasePrice(basis) {
   const early = Math.min(basis,36);
   const middle = clamp(basis-36,0,20);
   const late = Math.max(0,basis-56);
-  return 128*1.22**(early-5)*1.16**Math.max(0,early-9)*1.16**middle*(1+late/18)**2.45;
+  const midgamePremium = 1+.045*clamp(basis-5,0,15);
+  return 128*1.22**(early-5)*1.16**Math.max(0,early-9)*1.16**middle*(1+late/18)**2.45*midgamePremium;
 }
 function rollValue(face,rank = 0,stars = 1) {
   const quality = face>=5 ? 1+.15*state.quality : 1;
+  const income = 1+.35*state.baseIncome+.2*state.talents.income;
   return Math.round(face*(rank===null ? 1 : materials[rank].multiplier)*STAR_RANKS[stars-1].pay*
-    (1+.35*state.baseIncome)*(1+.2*state.talents.income)*quality);
+    income*quality);
 }
 function starStats(die) {return STAR_RANKS[state.dieStars[die.slot]-1];}
 function normalizeStars(stars) {
@@ -575,8 +577,8 @@ function specialOffer(type) {
   const count = state.dieSpecials.filter(value=>value===type).length;
   const limit = state.talents[special.skill];
   const basis = specialDiceBasis(state,type);
-  const rosterFactor = 1+.045*Math.max(0,dicePriceBasis(state)-4);
-  const typeFactor = 1.65**Math.min(basis,8)*(1+.12*Math.max(0,basis-8));
+  const rosterFactor = 1+.06*Math.max(0,dicePriceBasis(state)-4);
+  const typeFactor = 1.8**Math.min(basis,8)*(1+.12*Math.max(0,basis-8));
   return {count,limit,price:Math.ceil(special.cost*typeFactor*rosterFactor)};
 }
 function buySpecial(type) {
@@ -1155,7 +1157,7 @@ function materialOffer() {
   const advanced = ranks.filter(rank=>rank>=to).length;
   const advancedBasis = state.dieMaterials.reduce((total,rank,slot)=>
     total+(rank!==null && rank>=to ? 2**(state.dieStars[slot]-1) : 0),0);
-  const rosterFactor = 1+.055*Math.max(0,normalDiceBasis(state)-4);
+  const rosterFactor = 1+.07*Math.max(0,normalDiceBasis(state)-4);
   const earlyGrowth = 1.14**clamp(advancedBasis-3,0,15);
   const lateGrowth = 1+Math.max(0,advancedBasis-18)/30;
   const progressFactor = (1+.12*advancedBasis)*earlyGrowth*lateGrowth;
@@ -1745,11 +1747,12 @@ function settle(die) {
   const specialActive = specialSynergy || special==="aura";
   const burst = multiplier===2 && ((highStar && (highCombo || specialActive)) || (highCombo && specialActive)) ?
     (highStar && highCombo && specialActive ? 6 : 4) : 0;
-  const chain = linked.size ? 1+.15*clamp(streak-2,0,4)+
-    (specialSynergy ? .25 : 0)+(die.aimedThrow ? .15 : 0) : 1;
-  const heatFactor = multiplier===2 ? 1+(heat?.feverBonus ?? 0) : 1;
-  const amount = Math.round((base+bonus)*chain*(1+boost.bonus/100)*
-    heatFactor*(burst || multiplier)*(1+rewards.income/100));
+  const chainBonus = linked.size ? .15*clamp(streak-2,0,4)+
+    (specialSynergy ? .25 : 0)+(die.aimedThrow ? .15 : 0) : 0;
+  const heatBonus = multiplier===2 ? heat?.feverBonus ?? 0 : 0;
+  // Parallel table bonuses build on the same base before fever or burst multiplies the roll.
+  const boosted = base*(1+chainBonus+boost.bonus/100+heatBonus)+bonus;
+  const amount = Math.round(boosted*(burst || multiplier)*(1+rewards.income/100));
   credit(amount);
   if (linked.size) resonanceResult = {
     die,partners:[...linked],face:die.face,amount,combo:streak,burst,start:time,until:time+1.1,
