@@ -338,6 +338,10 @@ h1{font-size:clamp(21px,3.05vw,29px);letter-spacing:.025em;color:var(--ink)}
 #roll-button{min-height:44px;background:transparent;color:#fff1d8;border:1px solid #9ca9b1;border-radius:4px;padding:4px 8px}
 #roll-button:hover{background:#4a5e6d}
 #resonance-status{color:#ffe0a0;font-size:12px;text-align:center}
+.stage-top>b{white-space:nowrap}
+@media(max-width:460px){
+  .stage-top:has(#resonance-status:not(:empty))>b{display:none}
+}
 .first-roll-hint{position:absolute;z-index:1;transform:translateX(-50%);white-space:nowrap;pointer-events:none;background:#f9edcf;color:#243346;border:2px solid #243346;border-radius:6px;box-shadow:0 3px #24334677;padding:8px 14px;font-weight:800;font-size:14px}
 .first-roll-hint::before{content:"";position:absolute;width:10px;height:10px;background:inherit;border-top:2px solid #243346;border-left:2px solid #243346;left:calc(50% - 5px);top:-7px;rotate:45deg}
 .panel{--panel-accent:#91392e;--panel-edge:#b09e80;--panel-surface:#f6ebd2;background:#f6ebd2;border:2px solid var(--ink);border-radius:10px;box-shadow:0 5px #211e1c}

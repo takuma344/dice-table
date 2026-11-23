@@ -1751,7 +1751,9 @@ function settle(die) {
   const amount = Math.round((base+bonus)*chain*(1+boost.bonus/100)*
     heatFactor*(burst || multiplier)*(1+rewards.income/100));
   credit(amount);
-  if (linked.size) resonanceResult = {die, partners:[...linked], face:die.face, amount, until:time+1.1};
+  if (linked.size) resonanceResult = {
+    die,partners:[...linked],face:die.face,amount,combo:streak,burst,start:time,until:time+1.1,
+  };
   if (multiplier===2) {
     state.feverCoins = Math.min(Number.MAX_SAFE_INTEGER,state.feverCoins+amount);
     state.bestFeverCoins = Math.max(state.bestFeverCoins,state.feverCoins);
@@ -1769,8 +1771,7 @@ function settle(die) {
   sound("land");
   sound("coin");
   const life = bonus || burst ? 1.1 : .85;
-  if (!linked.size || burst) placePopup({x:die.x,y:die.y-14*unit,die,life,total:life,amount,
-    crit:bonus ? streak : 0,fever:multiplier===2,burst});
+  if (!linked.size) placePopup({x:die.x,y:die.y-14*unit,die,life,total:life,amount,fever:multiplier===2,burst});
   awardMilestones();
 }
 function tickDie(die,dt) {
@@ -2356,44 +2357,111 @@ function placePopup(popup) {
     return distance<best.distance ? {item,distance} : best;
   },{distance:Infinity}).item;
   nearest.amount += popup.amount;
-  nearest.crit = Math.max(nearest.crit,popup.crit);
   nearest.fever ||= popup.fever;
   nearest.burst = Math.max(nearest.burst ?? 0,popup.burst ?? 0);
   nearest.life = Math.max(nearest.life,.4);
 }
-function drawPopup(popup) {
-  const age=popup.total-popup.life;
-  const cell = popupCell(popup.slot);
-  const maxWidth = Math.max(1,popupGrid.w-7);
-  const annotated = popup.crit || popup.burst;
-  const amountSize = Math.min(popupGrid.h*.36,Math.max(13,(annotated ? 17 : 15)*unit));
-  const comboSize = Math.min(popupGrid.h*.26,Math.max(10,11*unit));
-  const x=cell.x, y=cell.y-popupGrid.h*(age/popup.total*.14+(annotated ? .11 : 0));
-  ctx.globalAlpha=clamp(popup.life/.23,0,1);
-  ctx.textAlign="center";
-  ctx.textBaseline="middle";
-  ctx.lineWidth=Math.min(3*unit,popupGrid.h*.05);
-  ctx.strokeStyle="#17322a";
-  ctx.font="800 "+amountSize+"px 'Toy Rounded','BIZ UDPGothic',sans-serif";
-  const label="＋"+short(popup.amount);
-  const badgeWidth = Math.min(maxWidth,ctx.measureText(label).width+14*unit);
-  const top=y-amountSize*.68, tall=amountSize*1.38;
-  pixelFrame(ctx,x-badgeWidth/2,top,badgeWidth,tall,3,"#272632");
-  pixelFrame(ctx,x-badgeWidth/2+1,top+1,badgeWidth-2,tall-2,2,popup.crit ? "#d3bf6f" : "#cb9559");
-  pixelFrame(ctx,x-badgeWidth/2+2,top+2,badgeWidth-4,tall-4,2,popup.crit ? "#314b44" : "#533933");
-  ctx.strokeStyle = "#362717";
-  ctx.strokeText(label,x,y,maxWidth);
-  ctx.fillStyle=popup.burst ? "#ffe48b" : popup.fever ? "#fff0ad" : popup.crit ? "#c7ffcc" : "#ffe4a1";
-  ctx.fillText(label,x,y,maxWidth);
-  if (annotated) {
-    const combo=popup.burst ? "バースト ×"+popup.burst+(popup.crit ? " · 共鳴 ×"+popup.crit : "") :
-      "共鳴クリティカル"+(popup.crit>1 ? " ×"+popup.crit : "");
-    const comboY = y+(amountSize+comboSize)*.64;
-    ctx.font="750 "+comboSize+"px 'Toy Rounded','BIZ UDPGothic',sans-serif";
-    ctx.strokeText(combo,x,comboY,maxWidth);
-    ctx.fillText(combo,x,comboY,maxWidth);
+function payoutFont(size) {
+  return "900 "+size+"px 'Toy Rounded','BIZ UDPGothic',sans-serif";
+}
+function drawPayout(entry,position) {
+  const {x,y} = position;
+  const {amount,caption,color,size,age,life} = entry;
+  const animated = !reducedMotion.matches;
+  const bounce = animated ? 1+.18*Math.sin(Math.PI*clamp(age/.24,0,1)) : 1;
+  const rise = animated ? Math.min(5,age*10) : 0;
+  ctx.save();
+  ctx.translate(Math.round(x),Math.round(y-rise));
+  ctx.scale(bounce,bounce);
+  ctx.globalAlpha=animated ? clamp(life/.21,0,1) : 1;
+  ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.lineJoin="bevel";
+  ctx.font=payoutFont(size);
+  ctx.lineWidth=4; ctx.strokeStyle="#221d2a";
+  ctx.strokeText(amount,0,caption ? -5 : 0);
+  ctx.fillStyle=color;
+  ctx.fillText(amount,0,caption ? -5 : 0);
+  if (caption) {
+    ctx.font=payoutFont(11);
+    ctx.lineWidth=2.5;
+    ctx.strokeText(caption,0,size*.56+2);
+    ctx.fillStyle="#fff3d4"; ctx.fillText(caption,0,size*.56+2);
   }
-  ctx.globalAlpha=1;
+  ctx.restore();
+}
+function payoutBounds(entry,x,y) {
+  return {left:x-entry.halfW,right:x+entry.halfW,top:y-entry.halfH,bottom:y+entry.halfH};
+}
+function findPayoutPosition(entry,anchor,bounds,preferred) {
+  const {x,y,columns,rows} = popupGrid;
+  const w=popupGrid.w*columns, h=popupGrid.h*rows;
+  const {halfW,halfH} = entry;
+  if (w<halfW*2 || h<halfH*2) return null;
+  const fit = (px,py)=>({x:clamp(px,x+halfW,x+w-halfW),y:clamp(py,y+halfH,y+h-halfH)});
+  const fits = position=>{
+    const candidate=payoutBounds(entry,position.x,position.y);
+    return !bounds.some(b=>candidate.left<b.right && candidate.right>b.left &&
+      candidate.top<b.bottom && candidate.bottom>b.top);
+  };
+  const positions = [
+    ...(preferred && preferred.x>=x+halfW && preferred.x<=x+w-halfW &&
+      preferred.y>=y+halfH && preferred.y<=y+h-halfH ? [preferred] : []),
+    fit(anchor.x,anchor.y),
+  ];
+  for (let dy=18;dy<=54;dy+=18) {
+    for (const dx of [0,-36,36,-72,72]) {
+      positions.push(fit(anchor.x+dx,anchor.y-dy),fit(anchor.x+dx,anchor.y+dy));
+    }
+  }
+  return positions.find(fits);
+}
+function drawPayouts(event) {
+  const visible = popups.filter(p=>p.life>0 && !event?.partners.includes(p.die));
+  if (!event && !visible.length) return "";
+  const bounds=dice.map(die=>{
+    const {points} = projectDie(die);
+    return {left:Math.min(...points.map(p=>p.x))-4,right:Math.max(...points.map(p=>p.x))+4,
+      top:Math.min(...points.map(p=>p.y))-4,bottom:Math.max(...points.map(p=>p.y))+4};
+  });
+  const burst = event?.burst ? null : visible.reduce((best,p)=>p.burst && (!best || p.burst>=best.burst) ? p : best,null);
+  const entries = [...visible].sort((a,b)=>Number(b===burst)-Number(a===burst) || b.life-a.life);
+  if (event) entries.unshift(event);
+  const maxLabels = width<460 ? 5 : 9;
+  let labelCount=0, fallback="";
+  for (const source of entries) {
+    const resonance = source===event;
+    const announceBurst = (resonance || source===burst) && source.burst;
+    const caption = announceBurst ? "バースト ×"+source.burst :
+      resonance ? "共鳴 "+source.face+(source.combo>1 ? " · "+source.combo+"連鎖" : "") : "";
+    const amount = "＋"+short(source.amount);
+    const size = resonance || announceBurst ? clamp(width*.046,20,26) : clamp(16*unit,14,18);
+    ctx.font=payoutFont(size);
+    const amountWidth=ctx.measureText(amount).width;
+    ctx.font=payoutFont(11);
+    const entry={
+      amount,caption,size,
+      halfW:Math.ceil(Math.max(amountWidth,ctx.measureText(caption).width)*.59)+4,
+      halfH:Math.ceil(size*.59)+(caption ? 13 : 7),
+      color:announceBurst ? "#ffe36e" : resonance ? "#a9ffd8" : source.fever ? "#ffdc86" : "#fff2c6",
+      age:resonance ? time-source.start : source.total-source.life,
+      life:resonance ? source.until-time : source.life,
+    };
+    let anchor;
+    if (resonance) {
+      const centers=[source.die,...source.partners.slice(0,4)].map(dieCenter);
+      anchor={x:centers.reduce((sum,p)=>sum+p.x,0)/centers.length,
+        y:Math.min(...centers.map(p=>p.y))-24*unit-entry.halfH};
+    } else anchor=popupCell(source.slot);
+    const position=findPayoutPosition(entry,anchor,bounds,source.labelPosition);
+    if (!position) {
+      if (!fallback && caption) fallback=caption+" "+amount;
+      continue;
+    }
+    source.labelPosition=position;
+    bounds.push(payoutBounds(entry,position.x,position.y));
+    drawPayout(entry,position);
+    if (++labelCount>=maxLabels) break;
+  }
+  return fallback;
 }
 function tableShake() {
   if (reducedMotion.matches) return {x:0,y:0};
@@ -2559,62 +2627,53 @@ function renderFirstRollHint() {
   firstRollHint.style.left = center.x+"px";
   firstRollHint.style.top = (bottom+12)+"px";
 }
-function drawResonance(showResult) {
+function activeResonance() {
   const event = resonanceResult;
-  if (!event || time>=event.until || !dice.includes(event.die)) return;
-  const partners = event.partners.filter(die=>dice.includes(die) && !die.rolling && die.face===event.face);
-  if (!partners.length || event.die.rolling || event.die.face!==event.face) return;
-  const center = dieCenter(event.die);
-  const points = partners.map(dieCenter);
+  return event && time<event.until ? event : null;
+}
+function drawResonanceEnergy(event) {
+  if (!event) return;
+  const participants = [event.die,...event.partners].filter(die=>
+    dice.includes(die) && !die.rolling && die.face===event.face);
+  if (!participants.length) return;
+  const moving = !reducedMotion.matches;
+  const age = time-event.start;
   ctx.save();
-  if (!showResult) {
-    for (const point of points) {
-      ctx.beginPath(); ctx.moveTo(center.x,center.y); ctx.lineTo(point.x,point.y);
-      ctx.strokeStyle="#ffc86767"; ctx.lineWidth=9*unit; ctx.stroke();
-      ctx.strokeStyle="#fff0b6"; ctx.lineWidth=3*unit; ctx.stroke();
+  for (const [index,die] of participants.entries()) {
+    const {x,y} = dieCenter(die);
+    const radius = Math.max(13,22*unit*starStats(die).size);
+    const phase = moving ? clamp((age-index*.025)/.65,0,1) : .35;
+    ctx.globalAlpha = clamp((event.until-time)/.3,0,1);
+    for (let i=0;i<12;i++) {
+      const angle = i*Math.PI/6+(moving ? phase*.5 : 0);
+      const reach = radius*(.85+phase*.48);
+      const px=Math.round(x+Math.cos(angle)*reach);
+      const py=Math.round(y+5*unit+Math.sin(angle)*reach*.75);
+      ctx.fillStyle=i%3===0 ? "#fff4aa" : "#82e9c0";
+      const size = i%3===0 ? 3 : 2;
+      ctx.fillRect(px,py,size,size);
     }
-  } else {
-    for (const die of [event.die,...partners]) {
-      const {points:corners} = projectDie(die);
-      const left=Math.min(...corners.map(p=>p.x)), top=Math.min(...corners.map(p=>p.y));
-      const right=Math.max(...corners.map(p=>p.x)), bottom=Math.max(...corners.map(p=>p.y));
-      rounded(ctx,left-3,top-3,right-left+6,bottom-top+6,6);
-      ctx.strokeStyle="#b87133"; ctx.lineWidth=4; ctx.stroke();
-      ctx.strokeStyle="#fff0ae"; ctx.lineWidth=2; ctx.stroke();
-    }
-    const label=event.face+"がそろった　＋"+format(event.amount)+"コイン";
-    ctx.font="bold 14px 'Toy Rounded','BIZ UDPGothic',sans-serif";
-    const labelW=Math.min(board.w-8,ctx.measureText(label).width+20), labelH=29;
-    const midX=(center.x+points.reduce((sum,p)=>sum+p.x,0))/(points.length+1);
-    const midY=(center.y+points.reduce((sum,p)=>sum+p.y,0))/(points.length+1);
-    const x=clamp(midX,board.x+labelW/2+4,board.x+board.w-labelW/2-4);
-    const preferred=midY-31*unit-labelH/2;
-    const bounds=dice.map(die=>{
-      const {points:corners}=projectDie(die);
-      return {left:Math.min(...corners.map(p=>p.x))-5,right:Math.max(...corners.map(p=>p.x))+5,
-        top:Math.min(...corners.map(p=>p.y))-5,bottom:Math.max(...corners.map(p=>p.y))+5};
-    });
-    let position, distance=Infinity;
-    for (let y=board.y+labelH/2+4;y<=board.y+board.h-labelH/2-4;y+=5) {
-      for (const offset of [0,-24,24,-48,48]) {
-        const cx=clamp(x+offset,board.x+labelW/2+4,board.x+board.w-labelW/2-4);
-        if (bounds.some(b=>cx+labelW/2>b.left && cx-labelW/2<b.right &&
-          y+labelH/2>b.top && y-labelH/2<b.bottom)) continue;
-        const cost=Math.abs(y-preferred)+Math.abs(cx-x)*1.3;
-        if (cost<distance) {distance=cost;position={x:cx,y};}
+  }
+  if (moving) {
+    for (const beam of beams) {
+      if (beam.arm || beam.b!==event.die || beam.life<=0) continue;
+      const from=dieCenter(beam.a), to=dieCenter(beam.b);
+      const progress=1-beam.life/.49;
+      const arc=Math.min(22,Math.hypot(to.x-from.x,to.y-from.y)*.22);
+      for (let i=0;i<7;i++) {
+        const t=progress*1.48-i*.07;
+        if (t<0 || t>1) continue;
+        const x=Math.round(from.x+(to.x-from.x)*t);
+        const y=Math.round(from.y+(to.y-from.y)*t-Math.sin(Math.PI*t)*arc+
+          Math.sin(beam.phase+i*2)*3*Math.sin(Math.PI*t));
+        ctx.globalAlpha=1-i*.12;
+        ctx.fillStyle=i===0 ? "#fff8ba" : "#8ff0ca";
+        ctx.fillRect(x,y,i<2 ? 4 : 2,i<2 ? 4 : 2);
+        if (i===0) {
+          ctx.fillRect(x-1,y+1,6,2);
+          ctx.fillRect(x+1,y-1,2,6);
+        }
       }
-    }
-    // A full board can have no free space for the result. Use the stage header there.
-    if (!position) {
-      ctx.restore();
-      return label;
-    } else {
-      const left=position.x-labelW/2, top=position.y-labelH/2;
-      pixelFrame(ctx,left,top,labelW,labelH,4,"#302931");
-      pixelFrame(ctx,left+1,top+1,labelW-2,labelH-2,3,"#c18e50");
-      pixelFrame(ctx,left+2,top+2,labelW-4,labelH-5,2,"#f9e7b5");
-      ctx.textAlign="center"; ctx.textBaseline="middle";
-      ctx.fillStyle="#613923"; ctx.fillText(label,position.x,position.y,labelW-12);
     }
   }
   ctx.restore();
@@ -2665,7 +2724,8 @@ function draw() {
   }
   ctx.restore();
   for (const beam of beams) if (beam.arm && beam.life>0) drawBeam(beam);
-  drawResonance(false);
+  const resonance = activeResonance();
+  drawResonanceEnergy(resonance);
   arms.forEach(drawArm);
   if (firstThrow && dice.length===1 && !dice[0].rolling) {
     const center = dieCenter(dice[0]);
@@ -2708,11 +2768,7 @@ function draw() {
   ctx = screenCtx;
   ctx.save();
   ctx.translate(shift.x,shift.y);
-  for (const p of popups) {
-    if (p.life<=0 || (resonanceResult?.until>time && resonanceResult.partners.includes(p.die))) continue;
-    drawPopup(p);
-  }
-  const label = drawResonance(true) ?? "";
+  const label = drawPayouts(resonance);
   const status = byId("resonance-status");
   if (status.textContent!==label) status.textContent = label;
   renderFirstRollHint();
