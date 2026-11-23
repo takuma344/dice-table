@@ -1075,10 +1075,15 @@ function renderSkillDetail(offer) {
   const label = offer.ready ? (rank ? "レベルを上げる" : "スキルを習得する") : offer.blocked ? "条件未達" : "コイン不足";
   setText(skillDetails.buy,label);
 }
+function renderCoinAmount(id) {
+  const amount = byId(id);
+  setText(amount,short(state.coins));
+  amount.title = format(state.coins);
+}
 function renderSkills() {
   byId("skills-locked").hidden = state.tree;
   byId("skill-workspace").hidden = !state.tree;
-  setText(byId("skill-coins"),format(state.coins));
+  renderCoinAmount("skill-coins");
   if (!state.tree) return;
   for (const skill of skillNodes) {
     const isRoot = skill===skillRoot;
@@ -1203,8 +1208,7 @@ function renderUI() {
     renderCollection();
     renderSkins();
   }
-  byId("coins").textContent = short(state.coins);
-  byId("coins").title = format(state.coins);
+  renderCoinAmount("coins");
   byId("dice-count").firstChild.nodeValue = state.dice+" ";
   byId("arm-stat").hidden = !state.talents.arms;
   byId("arm-count").textContent = state.arms;

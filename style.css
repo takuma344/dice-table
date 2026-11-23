@@ -546,8 +546,20 @@ h1{color:#fff0cf;text-shadow:0 2px #241c21}
 .first-roll-hint,.notice,#purchase-receipt{border-radius:0;box-shadow:inset 0 2px #fff6d649,3px 3px #29242ba0}
 .first-roll-hint{border-color:#3a2b2a;background:#f8e7b9}
 .first-roll-hint::before{border-color:#3a2b2a}
+.masthead .brand{min-inline-size:0}
+.masthead .header-tools{flex:none}
+.balance .metric-label{white-space:nowrap}
+.coin-amount{
+  /* Reserve room for a six-character mantissa and a full-width Japanese unit. */
+  display:block;inline-size:9ch;white-space:nowrap;line-height:1.15;text-align:end;
+}
+.skill-wallet{flex:none;flex-wrap:nowrap;white-space:nowrap}
 @media(max-width:780px){
   .stage,.stage[data-skin],.panel,.skills-open .panel{border-width:5px}
   .tabs,.skills-open .tabs{gap:2px;padding-inline:3px}
   .tabs button,.skills-open .tabs button{padding-inline:3px}
+  .balance .coin-amount,.skill-wallet .coin-amount{font-size:clamp(14px,4.5vw,19px)}
+  .skill-wallet{display:grid;grid-template-columns:auto auto;gap:3px 5px}
+  .skill-wallet svg{grid-row:1 / span 2}
+  .skill-wallet span{text-align:end}
 }
