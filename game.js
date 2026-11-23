@@ -1290,10 +1290,12 @@ function buy(item) {
 
 const tabButtons = [...document.querySelectorAll("[data-tab]")];
 function selectTab(tab,focus = false) {
-  if (tab.getAttribute("aria-selected")!=="true") {
-    unlockAudio();
-    sound("select");
+  if (tab.getAttribute("aria-selected")==="true") {
+    if (focus) tab.focus({preventScroll:true});
+    return;
   }
+  unlockAudio();
+  sound("select");
   const skillsOpen = tab.dataset.tab==="skills";
   document.querySelector(".game").classList.toggle("skills-open",skillsOpen);
   feverStage.inert = skillsOpen;
@@ -1305,10 +1307,17 @@ function selectTab(tab,focus = false) {
     button.tabIndex = selected ? 0 : -1;
     byId(button.dataset.tab).hidden = !selected;
   });
-  document.querySelector(".panel").scrollTop = 0;
+  byId("panel-scroll").scrollTop = 0;
   renderUI();
   if (skillsOpen && state.tree) centerSkillNode(selectedSkill.id);
-  if (focus) tab.focus();
+  if (focus) {
+    tab.focus({preventScroll:true});
+    const bar = tab.parentElement;
+    const bounds = bar.getBoundingClientRect();
+    const button = tab.getBoundingClientRect();
+    if (button.left<bounds.left) bar.scrollLeft += button.left-bounds.left;
+    else if (button.right>bounds.right) bar.scrollLeft += button.right-bounds.right;
+  }
 }
 for (const tab of tabButtons) {
   tab.addEventListener("click",()=>selectTab(tab));

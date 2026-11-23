@@ -554,9 +554,23 @@ h1{color:#fff0cf;text-shadow:0 2px #241c21}
   display:block;inline-size:9ch;white-space:nowrap;line-height:1.15;text-align:end;
 }
 .skill-wallet{flex:none;flex-wrap:nowrap;white-space:nowrap}
+.panel,.skills-open .panel{overflow:clip}
+.panel-scroll{
+  display:flex;flex-direction:column;flex:1 1 auto;min-height:0;
+  overflow:auto;scrollbar-gutter:stable;scrollbar-color:#a99a80 var(--paper);
+}
+.panel-scroll > *{flex:none}
+#skill-inspector-slot{top:12px}
+.tabs,.skills-open .tabs{
+  overflow-y:hidden;overscroll-behavior-x:contain;padding-inline-end:10px;
+}
+.tabs,.tabs button{touch-action:pan-x pinch-zoom;user-select:none;-webkit-touch-callout:none}
+.tabs button:active:not(:disabled){transform:none}
 @media(max-width:780px){
+  .panel,.skills-open .panel{overflow:visible}
+  .panel-scroll{overflow:visible;scrollbar-gutter:auto}
   .stage,.stage[data-skin],.panel,.skills-open .panel{border-width:5px}
-  .tabs,.skills-open .tabs{gap:2px;padding-inline:3px}
+  .tabs,.skills-open .tabs{gap:2px;padding-inline:3px 8px}
   .tabs button,.skills-open .tabs button{padding-inline:3px}
   .balance .coin-amount,.skill-wallet .coin-amount{font-size:clamp(14px,4.5vw,19px)}
   .skill-wallet{display:grid;grid-template-columns:auto auto;gap:3px 5px}
